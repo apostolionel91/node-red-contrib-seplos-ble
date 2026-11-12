@@ -79,6 +79,12 @@ test('97 % for 5 minutes alerts once (yellow before that is "busy" only at 80-95
   assert.equal(alerts[1].priority, -1);
 });
 
+test('the exec command avoids option forms the GX\'s BusyBox rejects', () => {
+  const cmd = JSON.parse(readFileSync(new URL('./gx-health-flow.json', import.meta.url), 'utf8')).find((n) => n.type === 'exec').command;
+  assert.doesNotMatch(cmd, /\b(head|tail) -\d/, 'BusyBox wants "head -n 1", not "head -1"');
+  assert.match(cmd, /head -n 1 \/proc\/stat/);
+});
+
 Date.now = realNow;
 console.log(results.join('\n'));
 console.log(process.exitCode ? 'SOME FAILED' : `ALL ${results.length} PASS`);

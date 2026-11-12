@@ -18,7 +18,7 @@ export const command = [
   'echo "data=$(df -kP /data 2>/dev/null | awk \'NR==2{print $2, $3, $4}\')"',
   'echo "root=$(df -kP / | awk \'NR==2{print $2, $3, $4}\')"',
   'echo "uptime=$(cut -d\' \' -f1 /proc/uptime)"',
-  'echo "cpu=$(head -1 /proc/stat)"',
+  'echo "cpu=$(head -n 1 /proc/stat)"', // BusyBox head on the GX has no "head -1"
   'echo "--procs"',
   'cat /proc/[0-9]*/stat 2>/dev/null' // one line per program: its name and the processor time it has used
 ].join('; ');

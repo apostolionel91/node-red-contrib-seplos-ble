@@ -1,4 +1,5 @@
 node_modules/
 *.tgz
+!packages/*.tgz
 examples/battery-page/preview.html
 __pycache__/

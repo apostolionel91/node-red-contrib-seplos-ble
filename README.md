@@ -18,25 +18,104 @@ Tested on a Cerbo GX (Venus OS 3.85) with two Seplos V3 packs on one Bluetooth d
 about 2.4 s, cell voltages add up to the pack voltages and the packs' Ah add up to the system figure.
 Not affiliated with Seplos or Victron Energy.
 
-## Install
+## What you need
 
-Not on the npm registry. Over SSH on the GX:
+- A Victron GX device with Bluetooth, for example a Cerbo GX, running **Venus OS Large** with **Node-RED switched
+  on**. In the GX menu: Settings → Venus OS Large → Node-RED (newer firmware: Settings → Integrations → Venus OS
+  Large). Switching it on needs the installer access level.
+- The Seplos **Bluetooth dongle** plugged into the master pack, within Bluetooth range of the GX.
+- **Internet on the GX** while you install: Node-RED downloads one small library (`dbus-next`).
+- The Node-RED editor open in a browser on the same network: **https://venus.local:1881**, or `https://` + the GX's
+  IP address + `:1881`. The first time, the browser warns about the certificate: choose Advanced, then Continue.
 
-```sh
-cd /data/home/nodered/.node-red
-npm install https://github.com/apostolionel91/node-red-contrib-seplos-ble/archive/refs/heads/main.tar.gz
-```
+## Install: choose one way
 
-then restart Node-RED. Or build a package file with `npm pack` in a copy of this repo and upload it in
-Node-RED: Menu → Manage palette → Install → the upload button.
+### Way 1: upload it in Node-RED (easiest, no command line)
 
-## Use
+1. Download the package file **[node-red-contrib-seplos-ble-1.3.0.tgz](https://github.com/apostolionel91/node-red-contrib-seplos-ble/raw/main/packages/node-red-contrib-seplos-ble-1.3.0.tgz)**.
+   Keep it as it is: don't unpack it.
+2. In Node-RED, open the menu (☰, top right) → **Manage palette** → the **Install** tab.
+3. Press the **upload** button (an arrow pointing up, at the top right of the Install tab), choose the `.tgz` file
+   you downloaded, then press **Upload**.
+4. Wait for the message that the nodes were added. A new group, **Seplos**, appears in the node list on the left.
 
-1. Drop a **Seplos read** node (category *Seplos*), add a battery: type the dongle's MAC, or press **Search**
-   and pick it (close the Seplos phone app first).
-2. Feed it from an inject node (e.g. every 60 s).
-3. `msg.payload` = `{ ok, timestamp, device, system, packs[], summary }`. A failed read sends nothing and raises
-   a node error naming the step (`find`, `connect`, `read`) and what to check.
+No upload button? Your Node-RED has uploads turned off: use Way 2.
+
+### Way 2: the command line (SSH)
+
+1. Turn on SSH on the GX (once). In the GX menu or the Remote Console:
+   - Settings → General → **Access level**: set it to *Superuser*. Highlight the line without opening it and hold
+     the right arrow (or the right key on your keyboard in the Remote Console) until it changes. On the new
+     interface, drag the Access & Security list down and hold it for 5 seconds.
+   - Settings → General → **Set root password**.
+   - Settings → General → **SSH on LAN**: on.
+
+   Victron's guide with pictures: [Root access](https://www.victronenergy.com/live/ccgx:root_access).
+2. On your computer, open a terminal (Windows: PowerShell; Mac: Terminal) and log in to the GX, using its IP
+   address. Type `yes` if it asks about the key, then the root password (nothing shows while you type it).
+
+   ```sh
+   ssh root@192.168.1.23
+   ```
+3. Paste these three lines. Warnings such as `npm WARN deprecated` are normal.
+
+   ```sh
+   cd /data/home/nodered/.node-red
+   npm install https://github.com/apostolionel91/node-red-contrib-seplos-ble/raw/main/packages/node-red-contrib-seplos-ble-1.3.0.tgz
+   svc -t /service/node-red-venus
+   ```
+
+   The last line restarts Node-RED; reload the editor in your browser after a minute.
+
+## Get your first reading
+
+1. Open the example flow **[seplos-ble-example-flow.json](examples/seplos-ble-example-flow.json)** here on GitHub
+   and press the **Copy raw file** button (top right of the file).
+2. In Node-RED: menu (☰) → **Import** → paste → **Import**.
+3. Double-click the **Seplos read** node, then the pencil next to **Battery**. Close the Seplos app on your phone
+   first (the dongle takes one connection at a time), press **Search** and pick your battery in the **Found**
+   list: its name starts with `SP`. Press **Update**, then **Done**. (Left empty, the node reads the first Seplos
+   it finds.)
+4. Press **Deploy** (top right).
+5. Open the **Debug** tab (the bug icon on the right). A reading appears every 60 seconds: open it to see every
+   pack and cell.
+
+## The battery page
+
+A page with every pack and cell, cell trends, history charts, energy per day, the BMS settings and alerts,
+served by Node-RED at **https://venus.local:1881/seplos**.
+
+1. Import **[seplos-battery-page-flow.json](examples/battery-page/seplos-battery-page-flow.json)** the same way
+   (Copy raw file → Import → paste). If you imported the first example, delete that flow first: two flows reading
+   one dongle get in each other's way.
+2. Pick your battery in the **Seplos** configuration node as above, then **Deploy**.
+3. Open https://venus.local:1881/seplos (or your GX's IP address with `:1881/seplos`).
+
+More about the page under [Examples](#examples).
+
+## Update or remove
+
+- **Update**: install the new version the same way (Way 1 or Way 2), then restart Node-RED: in the GX menu
+  switch Node-RED off and on again, or run `svc -t /service/node-red-venus` over SSH.
+- **Remove**: delete the flows that use the Seplos nodes and Deploy, then menu (☰) → Manage palette →
+  the **Nodes** tab → node-red-contrib-seplos-ble → **remove**.
+
+## If it doesn't work
+
+A failed read sends nothing and shows an error under the node (and in the Debug tab), naming the step that failed:
+
+- **find, "dongle not heard"**: close the Seplos phone app (a connected dongle stops advertising), check that the
+  dongle is plugged in and close enough to the GX, and that Bluetooth is on in the GX menu.
+- **connect**: something else holds the dongle, usually the phone app or a second flow reading the same battery.
+- **"no Seplos V3 service"**: the address belongs to another Bluetooth device; press Search and pick the one
+  starting with `SP`.
+- **read, "did not answer like a Seplos V3"**: connected, but the BMS did not reply as a Seplos V3 does. Check that
+  the dongle sits on the master pack.
+
+## How it works
+
+1. A **Seplos read** node reads the battery each time a message arrives (feed it from an inject node).
+2. `msg.payload` = `{ ok, timestamp, device, system, packs[], summary }`.
 
 On a multi-pack system, use the dongle on the master pack: device 0 answers for the system, devices 1..N
 for each pack.
@@ -59,13 +138,9 @@ and 0x1100 ×26 (cells and temperatures). Register map and scaling after aiobmsb
 
 ## Examples
 
-Import any of these in Node-RED (Menu → Import), then Deploy. Each battery node starts with an empty address,
-which reads the first Seplos it finds; type yours or press **Search** to pick one.
-
 - **[`examples/seplos-ble-example-flow.json`](examples/seplos-ble-example-flow.json)**: reads every 60 s and shows
   the reading in the debug sidebar.
-- **[`examples/battery-page/`](examples/battery-page)**: a battery page served by Node-RED at `/seplos`
-  (e.g. `https://venus.local:1881/seplos`). Import `seplos-battery-page-flow.json`. It shows:
+- **[`examples/battery-page/`](examples/battery-page)**: the battery page at `/seplos`. It shows:
   - every pack and cell, with balancing marks;
   - cell trends over 24 hours or 7 days;
   - state of charge, cell gap, power and voltage over time;
@@ -87,7 +162,8 @@ which reads the first Seplos it finds; type yours or press **Search** to pick on
   - CPU temperature;
   - storage use.
 
-  Alerts go to the link node "GX alerts".
+  Alerts go to the link node "GX alerts". Import [gx-health-flow.json](examples/gx-health/gx-health-flow.json) the
+  same way; it needs no extra nodes.
 
 ## Tests
 
@@ -97,7 +173,7 @@ npm test
 
 This runs the package against a fake BlueZ that answers with the Seplos V3 replies recorded in aiobmsble's tests
 (`test/frames.json`), then the page's function nodes over 26 simulated hours, then the GX health function.
-No Bluetooth or GX is needed.
+No Bluetooth or GX is needed. `npm run pack` rebuilds the package file in `packages/`.
 
 ## Credits and licence
 

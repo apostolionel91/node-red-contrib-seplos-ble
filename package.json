@@ -3,7 +3,8 @@
   "version": "1.3.0",
   "description": "Node-RED reader for Seplos V3 BMS over Bluetooth (BlueZ D-Bus, read-only, every pack). Adapted from node-red-contrib-sok.",
   "scripts": {
-    "test": "node test/run.mjs && node examples/battery-page/fn-test.mjs && node examples/gx-health/test.mjs"
+    "test": "node test/run.mjs && node examples/battery-page/fn-test.mjs && node examples/gx-health/test.mjs",
+    "pack": "npm pack --pack-destination packages"
   },
   "type": "module",
   "main": "./dist/index.js",
