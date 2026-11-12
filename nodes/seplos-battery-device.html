@@ -1,0 +1,88 @@
+<script type="text/javascript">
+  RED.nodes.registerType('seplos-battery-device', {
+    category: 'config',
+    defaults: {
+      name: { value: '' },
+      address: { value: '', validate: function (v) { return !v || /^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/.test(v.trim()); } },
+      deviceName: { value: '' },
+      keepConnected: { value: false }
+    },
+    label: function () {
+      return this.name || this.address || this.deviceName || 'Seplos battery';
+    },
+    oneditprepare: function () {
+      var address = $('#node-config-input-address');
+      var found = $('#node-config-input-found');
+      var button = $('#node-config-input-search');
+      var status = $('#node-config-input-search-status');
+
+      found.on('change', function () {
+        if (found.val()) address.val(found.val());
+      });
+
+      button.on('click', function () {
+        button.prop('disabled', true);
+        status.text('searching for 10 s (close the Seplos phone app first)...');
+        $.getJSON('seplos-battery/devices')
+          .done(function (devices) {
+            found.empty();
+            found.append($('<option></option>').attr('value', '').text('pick a found device'));
+            devices.forEach(function (d) {
+              var label = (d.name || '(no name)') + '  ' + d.address + (d.rssi !== null ? '  ' + d.rssi + ' dBm' : '')
+                + (d.seplosName ? '' : '  (FFF0 service only)');
+              found.append($('<option></option>').attr('value', d.address).text(label));
+            });
+            status.text(devices.length + ' found');
+          })
+          .fail(function (xhr) {
+            var response = xhr.responseJSON || {};
+            status.text(response.error || 'search failed');
+          })
+          .always(function () {
+            button.prop('disabled', false);
+          });
+      });
+    }
+  });
+</script>
+
+<script type="text/html" data-template-name="seplos-battery-device">
+  <div class="form-row">
+    <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-config-input-name" placeholder="Seplos">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-address"><i class="fa fa-bluetooth"></i> MAC</label>
+    <input type="text" id="node-config-input-address" placeholder="C0:D6:3C:00:00:00" style="width:60%;">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-found"><i class="fa fa-search"></i> Found</label>
+    <select id="node-config-input-found" style="width:60%;">
+      <option value="">press Search</option>
+    </select>
+    <button type="button" id="node-config-input-search" class="red-ui-button" style="margin-left:4px;">Search</button>
+  </div>
+  <div class="form-row">
+    <label></label>
+    <span id="node-config-input-search-status" style="color:#666;"></span>
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-deviceName"><i class="fa fa-font"></i> Or name</label>
+    <input type="text" id="node-config-input-deviceName" placeholder="only used when MAC is empty" style="width:60%;">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-keepConnected"><i class="fa fa-link"></i> Keep connected</label>
+    <input type="checkbox" id="node-config-input-keepConnected" style="width:auto;">
+    <span style="color:#666;">faster reads; the phone app cannot connect meanwhile (send <code>release</code>)</span>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="seplos-battery-device">
+  <p>Which Seplos V3 Bluetooth dongle to read. Set its <b>MAC</b>, or press <b>Search</b> and pick it from the list
+  (Seplos dongles advertise names such as <code>SP05B…</code>, <code>SP1xxB…</code>, <code>XZHX…</code> or <code>CSY…</code>).</p>
+  <p>With no MAC and no name, the first device with a Seplos name is read.</p>
+  <p>On a multi-pack system, use the dongle on the master pack: one connection reads every pack.</p>
+  <p><b>Keep connected</b> holds the Bluetooth connection open between reads (faster; reconnects by itself when it
+  drops or stops answering). The dongle takes one connection at a time, so the Seplos phone app cannot connect
+  while it is held: send <code>release</code> to a read node to free it for 10 minutes.</p>
+</script>

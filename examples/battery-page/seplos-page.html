@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seplos battery</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --mid: #f0efec;
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --up: #2a78d6; --down: #e34948;
+    --good: #0ca30c; --warn: #fab219; --crit: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835;
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --up: #3987e5; --down: #e66767;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 16px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 12px; }
+  h1 { font-size: 20px; margin: 0; font-weight: 600; }
+  h2 { font-size: 15px; margin: 0 0 10px; font-weight: 600; }
+  h3 { font-size: 13px; margin: 0 0 6px; font-weight: 600; color: var(--ink-2); }
+  section { margin-bottom: 12px; }
+  .sub { color: var(--ink-2); } .muted { color: var(--muted); }
+  .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 14px; }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+  .status i { font-style: normal; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; font-size: 11px; color: #fff; flex: none; }
+  .status.good i { background: var(--good); } .status.warn i { background: var(--warn); color: #0b0b0b; } .status.crit i { background: var(--crit); }
+  .alerts .card { display: flex; flex-direction: column; gap: 6px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+  .hero { grid-column: span 2; }
+  @media (max-width: 420px) { .hero { grid-column: span 1; } }
+  .tile .label { color: var(--ink-2); font-size: 12px; }
+  .tile .value { font-size: 22px; font-weight: 600; margin-top: 2px; }
+  .tile .note { color: var(--ink-2); font-size: 12px; margin-top: 2px; }
+  .hero .value { font-size: 48px; line-height: 1.05; }
+  .meter { height: 8px; border-radius: 4px; margin-top: 8px; overflow: hidden; }
+  .meter b { display: block; height: 100%; border-radius: 4px; }
+  .packs { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 10px; }
+  .pack-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 10px; margin: 10px 0; }
+  .facts div span { display: block; color: var(--ink-2); font-size: 12px; }
+  .facts div b { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .temps { color: var(--ink-2); font-size: 12px; margin-top: 6px; } .temps b { color: var(--ink); font-weight: 600; }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 14px 10px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--ink-2); font-size: 12px; margin: -2px 0 4px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .seg { display: inline-flex; border: 1px solid var(--ring); border-radius: 8px; overflow: hidden; }
+  .seg button { font: inherit; border: 0; background: transparent; color: var(--ink-2); padding: 4px 12px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+  .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  svg text { fill: var(--muted); font-size: 10px; font-family: inherit; }
+  svg .lab { fill: var(--ink-2); font-size: 11px; }
+  canvas { display: block; width: 100%; image-rendering: pixelated; }
+  .heat { position: relative; }
+  .scale { display: flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 11px; margin-top: 4px; }
+  .scale i { display: inline-block; width: 120px; height: 8px; border-radius: 4px; flex: none; }
+  .scale > span:not(.muted) { white-space: nowrap; }
+  .tip { position: fixed; pointer-events: none; z-index: 10; background: var(--surface); color: var(--ink); border: 1px solid var(--ring);
+         border-radius: 8px; padding: 6px 8px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); white-space: nowrap; }
+  .tip .k { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+  details { margin-top: 8px; } summary { cursor: pointer; color: var(--ink-2); }
+  table { border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; margin-top: 6px; width: 100%; }
+  th, td { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--grid); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--ink-2); font-weight: 600; }
+  table.left th, table.left td { text-align: left; } td.num { white-space: nowrap; }
+  pre { white-space: pre-wrap; word-break: break-all; font-size: 11px; color: var(--ink-2); }
+  .wide { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>Seplos battery</h1><div id="age" class="status"></div></header>
+  <div id="banner" class="card" style="margin-bottom:12px" hidden></div>
+  <section id="alerts" class="alerts" aria-label="Alerts"></section>
+  <section aria-label="Whole system"><div id="system" class="grid"></div></section>
+  <section aria-label="Battery summary"><div id="kpis" class="grid"></div></section>
+  <section id="packs" class="packs" aria-label="Packs"></section>
+  <section class="card" aria-label="Cell trends">
+    <div class="row"><h2 style="margin:0">Cell trends</h2><span class="sub" id="trendsNote"></span></div>
+    <div id="heat" class="packs"></div>
+  </section>
+  <section class="card" aria-label="History">
+    <div class="row"><h2 style="margin:0">History</h2>
+      <div class="seg" role="group" aria-label="Range"><button data-r="24h">24 hours</button><button data-r="7d">7 days</button></div></div>
+    <div id="charts" class="charts"></div>
+    <details><summary>Readings (table)</summary><div id="table" class="wide"></div></details>
+  </section>
+  <section id="settings" class="card" aria-label="Settings"></section>
+  <section class="card"><h2>Alert history</h2><div id="alertlog"></div></section>
+  <details class="card"><summary>Raw reading (JSON)</summary><pre id="raw"></pre></details>
+</main>
+<div id="tip" class="tip" hidden></div>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const PACK = ['--s1', '--s2', '--s3'];
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v) ? '–' : Number(v).toFixed(d));
+const kw = (w) => (w === null || w === undefined ? '–' : Math.abs(w) >= 1000 ? (w / 1000).toFixed(2) + ' kW' : Math.round(w) + ' W');
+const kwh = (wh) => (wh === null || wh === undefined ? '–' : (wh / 1000).toFixed(1) + ' kWh');
+const hhmm = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const dayLabel = (t) => new Date(t).toLocaleDateString([], { weekday: 'short', day: 'numeric' });
+const dur = (h) => (h === null || h === undefined ? null : h >= 48 ? Math.round(h / 24) + ' days' : Math.floor(h) + ' h ' + String(Math.round((h % 1) * 60)).padStart(2, '0') + ' min');
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs = {}, parent) => { const n = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); if (parent) parent.appendChild(n); return n; };
+const status = (cls, icon, text) => `<span class="status ${cls}"><i aria-hidden="true">${icon}</i>${esc(text)}</span>`;
+const store = { get(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } } };
+
+// ---- tooltip ----
+const tip = $('tip');
+function showTip(html, x, y) {
+  tip.innerHTML = html; tip.hidden = false;
+  const r = tip.getBoundingClientRect();
+  let left = x + 14, top = y + 14;
+  if (left + r.width > innerWidth - 8) left = x - r.width - 14;
+  if (top + r.height > innerHeight - 8) top = y - r.height - 14;
+  tip.style.left = Math.max(8, left) + 'px'; tip.style.top = Math.max(8, top) + 'px';
+}
+const hideTip = () => { tip.hidden = true; };
+function niceStep(span, target = 4) {
+  const raw = span / target, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
+  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
+}
+const mix = (a, b, f) => { // two #rrggbb colours, f 0..1
+  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16)), pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+  return 'rgb(' + pa.map((v, i) => Math.round(v + (pb[i] - v) * f)).join(',') + ')';
+};
+// Charts size themselves to their box, so they are drawn only once every card of the section is on the
+// page: in a grid, the first card spans the whole row until its neighbours arrive.
+let pending = [];
+const later = (draw) => { pending.push(draw); };
+const drawPending = () => { const list = pending; pending = []; list.forEach((draw) => draw()); };
+// Rebuilding a section closes its open tables; keep them open.
+function keepOpen(box, build) {
+  const was = [...box.querySelectorAll('details')].map((d) => d.open);
+  build();
+  box.querySelectorAll('details').forEach((d, i) => { if (was[i]) d.open = true; });
+}
+// Time labels for a chart from t0 to t1: days for spans over 2 days, otherwise round local times.
+function timeTicks(t0, t1) {
+  const span = t1 - t0, out = [];
+  if (span > 2 * 86400e3) {
+    const d = new Date(t0); d.setHours(24, 0, 0, 0);
+    for (let t = d.getTime(); t <= t1; t += 86400e3) out.push({ t, label: dayLabel(t) });
+    return out;
+  }
+  const every = span > 12 * 3600e3 ? 360 : span > 4 * 3600e3 ? 120 : span > 90 * 60e3 ? 60 : span > 30 * 60e3 ? 15 : 5; // minutes
+  const f = new Date(t0); f.setMinutes(Math.ceil(f.getMinutes() / 5) * 5, 0, 0);
+  for (let t = f.getTime(); t <= t1; t += 5 * 60e3) { const d = new Date(t); if (!((d.getHours() * 60 + d.getMinutes()) % every)) out.push({ t, label: hhmm(t) }); }
+  return out;
+}
+
+// ---- cells now: difference from the pack average, with balancing marks ----
+function cellChart(box, pack) {
+  const cells = pack.cells.map((v, i) => ({ no: i + 1, v })).filter((c) => c.v !== null);
+  if (!cells.length) { box.textContent = 'No cell data.'; return; }
+  const avg = cells.reduce((a, c) => a + c.v, 0) / cells.length;
+  cells.forEach((c) => { c.dev = Math.round((c.v - avg) * 1000); });
+  const bal = new Set(pack.balancing ? pack.balancing.cells : []);
+  const W = Math.max(300, box.clientWidth || 330), H = 160, L = 34, R = 8, T = 16, B = 30;
+  const maxAbs = Math.max(5, ...cells.map((c) => Math.abs(c.dev)));
+  const step = niceStep(maxAbs * 2, 4), lim = Math.ceil(maxAbs / step) * step;
+  const y = (d) => T + (H - T - B) * (lim - d) / (2 * lim);
+  const slot = (W - L - R) / 16, bw = Math.min(24, slot - 2);
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Pack ${pack.pack} cells: lowest ${pack.cellMinNo}, highest ${pack.cellMaxNo}, gap ${pack.deltaMv} mV` });
+  for (let d = -lim; d <= lim + 1e-9; d += step) {
+    el('line', { x1: L, x2: W - R, y1: y(d), y2: y(d), stroke: d === 0 ? css('--axis') : css('--grid'), 'stroke-width': 1 }, svg);
+    el('text', { x: L - 4, y: y(d) + 3, 'text-anchor': 'end' }, svg).textContent = (d > 0 ? '+' : '') + d;
+  }
+  el('text', { x: W - R, y: T - 5, 'text-anchor': 'end', class: 'lab' }, svg).textContent = `average ${avg.toFixed(3)} V`;
+  for (const c of cells) {
+    const cx = L + slot * (c.no - 0.5), x0 = cx - bw / 2, y0 = y(0), y1 = y(c.dev), up = c.dev >= 0, h = Math.abs(y1 - y0);
+    if (h >= 0.5) {
+      const r = Math.min(4, h, bw / 2);
+      const d = up ? `M${x0},${y0} V${y1 + r} Q${x0},${y1} ${x0 + r},${y1} H${x0 + bw - r} Q${x0 + bw},${y1} ${x0 + bw},${y1 + r} V${y0} Z`
+        : `M${x0},${y0} V${y1 - r} Q${x0},${y1} ${x0 + r},${y1} H${x0 + bw - r} Q${x0 + bw},${y1} ${x0 + bw},${y1 - r} V${y0} Z`;
+      el('path', { d, fill: up ? css('--up') : css('--down') }, svg);
+    } else el('line', { x1: x0, x2: x0 + bw, y1: y0, y2: y0, stroke: css('--ink-2'), 'stroke-width': 2, 'stroke-linecap': 'round' }, svg);
+    el('text', { x: cx, y: H - 16, 'text-anchor': 'middle' }, svg).textContent = c.no;
+    if (bal.has(c.no)) el('circle', { cx, cy: H - 6, r: 3, fill: css('--ink-2') }, svg);
+    if (c.no === pack.cellMaxNo || c.no === pack.cellMinNo) el('text', { x: cx, y: up ? y1 - 4 : y1 + 12, 'text-anchor': 'middle', class: 'lab' }, svg).textContent = c.v.toFixed(3);
+    const hit = el('rect', { x: cx - slot / 2, y: T, width: slot, height: H - T, fill: 'transparent' }, svg);
+    const html = `<b>Pack ${pack.pack}, cell ${c.no}</b><br>${c.v.toFixed(3)} V · ${(c.dev > 0 ? '+' : '') + c.dev} mV vs average`
+      + (c.no === pack.cellMaxNo ? '<br>highest in this pack' : c.no === pack.cellMinNo ? '<br>lowest in this pack' : '') + (bal.has(c.no) ? '<br>balancing now' : '');
+    hit.addEventListener('pointermove', (e) => showTip(html, e.clientX, e.clientY));
+    hit.addEventListener('pointerleave', hideTip);
+  }
+  box.replaceChildren(svg);
+  if (pack.balancing) {
+    const n = document.createElement('div'); n.className = 'temps';
+    n.innerHTML = bal.size ? `<span class="swatch" style="background:${css('--ink-2')}"></span>balancing now: cell ${[...bal].join(', ')} <span class="muted">(bit map from the GX driver, not yet confirmed)</span>`
+      : '<span class="muted">no cell balancing now (bit map from the GX driver, not yet confirmed)</span>';
+    box.appendChild(n);
+  }
+}
+
+// ---- line chart: one measure, one or more series, crosshair + tooltip ----
+function lineChart(box, { title, unit, digits, times, series, zero, gapMs }) {
+  const card = document.createElement('div');
+  card.innerHTML = `<h3>${esc(title)}</h3>`;
+  if (series.length > 1) {
+    const lg = document.createElement('div'); lg.className = 'legend';
+    lg.innerHTML = series.map((s) => `<span><i class="swatch" style="background:${s.color}"></i>${esc(s.name)}</span>`).join('');
+    card.appendChild(lg);
+  }
+  box.appendChild(card);
+  const pts = series.map((s) => s.values.map((v, i) => ({ t: times[i], v })).filter((p) => p.v !== null && p.v !== undefined));
+  const all = pts.flat();
+  if (all.length < 2) { const p = document.createElement('p'); p.className = 'muted'; p.textContent = 'Collecting…'; card.appendChild(p); return; }
+  later(() => {
+  const W = Math.max(300, card.clientWidth || 330), H = 150, L = 42, R = series.length > 1 ? 64 : 14, T = 8, B = 20;
+  const t0 = Math.min(...times), t1 = Math.max(...times, t0 + 60000);
+  let lo = Math.min(...all.map((p) => p.v)), hi = Math.max(...all.map((p) => p.v));
+  if (zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+  const step = niceStep(hi - lo, 3); lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+  const x = (t) => L + (W - L - R) * (t - t0) / (t1 - t0), y = (v) => T + (H - T - B) * (hi - v) / (hi - lo);
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': title });
+  const dec = step < 1 ? (step < 0.1 ? 2 : 1) : 0;
+  for (let v = lo; v <= hi + step / 1e6; v += step) {
+    el('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: zero && Math.abs(v) < step / 1e6 ? css('--axis') : css('--grid'), 'stroke-width': 1 }, svg);
+    el('text', { x: L - 4, y: y(v) + 3, 'text-anchor': 'end' }, svg).textContent = Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(dec);
+  }
+  const span = t1 - t0;
+  for (const tk of timeTicks(t0, t1)) if (x(tk.t) > L + 12 && x(tk.t) < W - R - 12) el('text', { x: x(tk.t), y: H - 5, 'text-anchor': 'middle' }, svg).textContent = tk.label;
+  const ends = pts.map((p) => p[p.length - 1]).filter(Boolean).map((q) => y(q.v)).sort((a, b) => a - b);
+  const labelsFit = series.length > 1 && ends.every((v, i) => i === 0 || v - ends[i - 1] >= 13);
+  const gap = gapMs || 5 * 60e3;
+  series.forEach((s, k) => {
+    const p = pts[k]; let d = '';
+    p.forEach((q, i) => { d += (i && q.t - p[i - 1].t < gap ? 'L' : 'M') + x(q.t).toFixed(1) + ',' + y(q.v).toFixed(1); });
+    el('path', { d, fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
+    const last = p[p.length - 1];
+    if (last) {
+      el('circle', { cx: x(last.t), cy: y(last.v), r: 4, fill: s.color, stroke: css('--surface'), 'stroke-width': 2 }, svg);
+      if (labelsFit) el('text', { x: x(last.t) + 8, y: y(last.v) + 4, class: 'lab' }, svg).textContent = `${s.name} ${fmt(last.v, digits)}`;
+    }
+  });
+  const cross = el('line', { y1: T, y2: H - B, stroke: css('--axis'), 'stroke-width': 1, visibility: 'hidden' }, svg);
+  const dots = series.map((s) => el('circle', { r: 4, fill: s.color, stroke: css('--surface'), 'stroke-width': 2, visibility: 'hidden' }, svg));
+  const hit = el('rect', { x: L, y: T, width: W - L - R, height: H - T - B, fill: 'transparent' }, svg);
+  hit.addEventListener('pointermove', (e) => {
+    const r = svg.getBoundingClientRect(), t = t0 + ((e.clientX - r.left) * W / r.width - L) / (W - L - R) * (t1 - t0);
+    let i = 0, best = Infinity;
+    times.forEach((tt, j) => { const dd = Math.abs(tt - t); if (dd < best) { best = dd; i = j; } });
+    cross.setAttribute('x1', x(times[i])); cross.setAttribute('x2', x(times[i])); cross.setAttribute('visibility', 'visible');
+    let html = `<b>${span > 2 * 86400e3 ? dayLabel(times[i]) + ' ' : ''}${hhmm(times[i])}</b>`;
+    series.forEach((s, k) => {
+      const v = s.values[i];
+      if (v === null || v === undefined) { dots[k].setAttribute('visibility', 'hidden'); return; }
+      dots[k].setAttribute('cx', x(times[i])); dots[k].setAttribute('cy', y(v)); dots[k].setAttribute('visibility', 'visible');
+      html += `<br><span class="k" style="background:${s.color}"></span>${esc(s.name || title)} ${fmt(v, digits)} ${esc(unit)}`;
+    });
+    showTip(html, e.clientX, e.clientY);
+  });
+  hit.addEventListener('pointerleave', () => { hideTip(); cross.setAttribute('visibility', 'hidden'); dots.forEach((d) => d.setAttribute('visibility', 'hidden')); });
+  card.appendChild(svg);
+  });
+}
+
+// ---- energy per day: battery charged (up) and discharged (down) ----
+function energyChart(box, days) {
+  const card = document.createElement('div');
+  card.innerHTML = `<h3>Battery energy per day (kWh)</h3><div class="legend"><span><i class="swatch" style="background:${css('--up')}"></i>charged</span><span><i class="swatch" style="background:${css('--down')}"></i>discharged</span></div>`;
+  box.appendChild(card);
+  if (!days.length) { card.insertAdjacentHTML('beforeend', '<p class="muted">Collecting…</p>'); return; }
+  later(() => {
+  const W = Math.max(300, card.clientWidth || 330), H = 150, L = 34, R = 8, T = 8, B = 20;
+  const vin = days.map((d) => (d.battIn || 0) / 1000), vout = days.map((d) => (d.battOut || 0) / 1000);
+  const m = Math.max(1, ...vin, ...vout), step = niceStep(m * 2, 4), lim = Math.ceil(m / step) * step;
+  const y = (v) => T + (H - T - B) * (lim - v) / (2 * lim);
+  const slot = (W - L - R) / days.length, bw = Math.min(24, slot - 6);
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Battery energy per day' });
+  for (let v = -lim; v <= lim + 1e-9; v += step) {
+    el('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: Math.abs(v) < 1e-9 ? css('--axis') : css('--grid'), 'stroke-width': 1 }, svg);
+    el('text', { x: L - 4, y: y(v) + 3, 'text-anchor': 'end' }, svg).textContent = Math.abs(v).toFixed(step < 1 ? 1 : 0);
+  }
+  days.forEach((d, i) => {
+    const cx = L + slot * (i + 0.5), x0 = cx - bw / 2, y0 = y(0);
+    for (const [val, up, col] of [[vin[i], true, css('--up')], [vout[i], false, css('--down')]]) {
+      const y1 = y(up ? val : -val), h = Math.abs(y1 - y0);
+      if (h < 0.5) continue;
+      const r = Math.min(4, h, bw / 2);
+      el('path', { d: up ? `M${x0},${y0} V${y1 + r} Q${x0},${y1} ${x0 + r},${y1} H${x0 + bw - r} Q${x0 + bw},${y1} ${x0 + bw},${y1 + r} V${y0} Z`
+        : `M${x0},${y0} V${y1 - r} Q${x0},${y1} ${x0 + r},${y1} H${x0 + bw - r} Q${x0 + bw},${y1} ${x0 + bw},${y1 - r} V${y0} Z`, fill: col }, svg);
+    }
+    el('text', { x: cx, y: H - 5, 'text-anchor': 'middle' }, svg).textContent = d.today ? 'today' : d.label;
+    const hit = el('rect', { x: cx - slot / 2, y: T, width: slot, height: H - T - B, fill: 'transparent' }, svg);
+    const html = `<b>${d.today ? 'Today so far' : esc(d.label)}</b><br>charged ${kwh(d.battIn)} · discharged ${kwh(d.battOut)}<br>solar ${kwh(d.pv)} · loads ${kwh(d.load)}<br>grid in ${kwh(d.gridIn)} · out ${kwh(d.gridOut)}`;
+    hit.addEventListener('pointermove', (e) => showTip(html, e.clientX, e.clientY));
+    hit.addEventListener('pointerleave', hideTip);
+  });
+  card.appendChild(svg);
+  card.insertAdjacentHTML('beforeend', `<details><summary>Per day (table)</summary><table><tr><th>Day</th><th>Charged</th><th>Discharged</th><th>Solar</th><th>Loads</th><th>Grid in</th><th>Grid out</th></tr>${
+    days.map((d) => `<tr><td>${d.today ? 'today' : esc(d.label)}</td><td>${kwh(d.battIn)}</td><td>${kwh(d.battOut)}</td><td>${kwh(d.pv)}</td><td>${kwh(d.load)}</td><td>${kwh(d.gridIn)}</td><td>${kwh(d.gridOut)}</td></tr>`).join('')}</table></details>`);
+  });
+}
+
+// ---- cell trends: every cell over time, colour = difference from the pack average then ----
+// Each column runs from its reading to the next one; a pause longer than gapMs stays blank, and so does a
+// reading this pack did not answer.
+function heatmap(box, packNo, points, color, gapMs, stepMs) {
+  const card = document.createElement('div');
+  card.innerHTML = `<div class="pack-head"><span class="swatch" style="background:${color}"></span><h3 style="margin:0">Pack ${packNo}</h3></div>`;
+  box.appendChild(card);
+  const k = packNo - 1;
+  const has = (p) => !!(p.cells && p.cells[k]);
+  const cols = points.filter(has);
+  if (cols.length < 2) { card.insertAdjacentHTML('beforeend', '<p class="muted">Collecting…</p>'); return null; }
+  // each cell's low and high over the range (the cell table uses these)
+  const lo = Array(16).fill(null), hi = Array(16).fill(null);
+  cols.forEach((p) => p.cells[k].forEach((mv, c) => { if (mv === null) return; lo[c] = lo[c] === null ? mv : Math.min(lo[c], mv); hi[c] = hi[c] === null ? mv : Math.max(hi[c], mv); }));
+  const missed = points.length - cols.length;
+  later(() => {
+    const devs = new Map(cols.map((p) => {
+      const v = p.cells[k].filter((c) => c !== null), a = v.reduce((s, c) => s + c, 0) / v.length;
+      return [p, p.cells[k].map((c) => (c === null ? null : c - a))];
+    }));
+    const absAll = [...devs.values()].flat().filter((d) => d !== null).map(Math.abs).sort((a, b) => a - b);
+    const dmax = Math.max(10, Math.ceil((absAll[Math.floor(absAll.length * 0.98)] || 10) / 5) * 5);
+    const W = Math.max(300, card.clientWidth || 330), L = 26, rowH = 9, H = 16 * rowH;
+    const cv = document.createElement('canvas');
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(W * dpr); cv.height = Math.round((H + 18) * dpr); cv.style.height = (H + 18) + 'px';
+    const g = cv.getContext('2d'); g.scale(dpr, dpr);
+    const mid = css('--mid'), up = css('--up'), down = css('--down');
+    const t0 = points[0].t, t1 = points[points.length - 1].t + stepMs;
+    const x = (t) => L + (W - L) * (t - t0) / (t1 - t0);
+    const end = (i) => (i + 1 < points.length && points[i + 1].t - points[i].t <= gapMs ? points[i + 1].t : points[i].t + stepMs);
+    points.forEach((p, i) => {
+      if (!has(p)) return;
+      const x0 = x(p.t), w = x(end(i)) - x0 + 0.5; // the half pixel hides seams between columns
+      devs.get(p).forEach((d, c) => {
+        if (d === null) return;
+        g.fillStyle = mix(mid, d >= 0 ? up : down, Math.min(1, Math.abs(d) / dmax));
+        g.fillRect(x0, c * rowH, w, rowH - 1);
+      });
+    });
+    g.fillStyle = css('--muted'); g.font = '10px system-ui, sans-serif'; g.textAlign = 'right';
+    for (let c = 0; c < 16; c += 3) g.fillText(String(c + 1), L - 4, c * rowH + rowH - 1);
+    g.fillText('16', L - 4, 15 * rowH + rowH - 1);
+    g.textAlign = 'center';
+    for (const tk of timeTicks(t0, t1)) if (x(tk.t) > L + 14 && x(tk.t) < W - 14) g.fillText(tk.label, x(tk.t), H + 13);
+    const wrap = document.createElement('div'); wrap.className = 'heat'; wrap.appendChild(cv);
+    wrap.setAttribute('role', 'img'); wrap.setAttribute('aria-label', `Pack ${packNo}: each cell over time, coloured by its difference from the pack average`);
+    const week = t1 - t0 > 2 * 86400e3;
+    cv.addEventListener('pointermove', (e) => {
+      const r = cv.getBoundingClientRect(), px = (e.clientX - r.left) * W / r.width, py = e.clientY - r.top;
+      const c = Math.floor(py / rowH); if (c < 0 || c > 15 || px < L) { hideTip(); return; }
+      const t = t0 + (px - L) / (W - L) * (t1 - t0);
+      let i = -1; for (let j = 0; j < points.length && points[j].t <= t; j++) i = j;
+      if (i < 0 || t >= end(i)) { hideTip(); return; }
+      const p = points[i], when = (week ? dayLabel(p.t) + ' ' : '') + hhmm(p.t);
+      if (!has(p)) { showTip(`<b>Pack ${packNo}</b> · ${when}<br>no answer from this pack`, e.clientX, e.clientY); return; }
+      const mv = p.cells[k][c], d = devs.get(p)[c], b = p.bal && p.bal[k] && p.bal[k].includes(c + 1);
+      showTip(`<b>Pack ${packNo}, cell ${c + 1}</b> · ${when}<br>${mv === null ? '–' : (mv / 1000).toFixed(3) + ' V'} · ${d === null ? '' : (d > 0 ? '+' : '') + Math.round(d) + ' mV vs average'}${b ? '<br>balancing' : ''}`, e.clientX, e.clientY);
+    });
+    cv.addEventListener('pointerleave', hideTip);
+    card.appendChild(wrap);
+    card.insertAdjacentHTML('beforeend', `<div class="scale"><span>−${dmax} mV</span><i style="background:linear-gradient(90deg, ${down}, ${mid}, ${up})"></i><span>+${dmax} mV</span><span class="muted">difference from the pack average at that moment; rows are cells 1–16</span></div>`
+      + (missed ? `<p class="muted" style="margin:4px 0 0">Missing from ${missed} of ${points.length} readings (the pack did not answer); those columns are blank.</p>` : ''));
+  });
+  return { lo, hi };
+}
+
+// ---- settings (read-only) ----
+const SOURCE = { tested: 'checked', driver: 'GX driver', pattern: 'inferred' };
+function renderSettings(st, changes) {
+  const box = $('settings');
+  if (!st) { box.innerHTML = '<h2>Settings</h2><p class="muted">Not read yet: the first settings read runs 40 s after deploy.</p>'; return; }
+  const cols = [{ name: 'System', s: st.system }].concat((st.packs || []).map((p) => ({ name: `Pack ${p.pack}`, s: p.settings })));
+  const ok = cols.filter((c) => c.s && !c.s.error);
+  const info = (st.packs || []).map((p) => (p.info && !p.info.error
+    ? `<div><b>Pack ${p.pack}</b> <span class="sub">${esc(p.info.model || '–')} · firmware ${esc(p.info.firmware || '–')} · serial ${esc(p.info.serial || '–')}</span></div>`
+    : `<div><b>Pack ${p.pack}</b> <span class="muted">model and serial not read</span></div>`)).join('');
+  const failed = cols.filter((c) => !c.s || c.s.error).map((c) => `${c.name}: ${esc((c.s && c.s.error) || 'not read')}`);
+  const labels = [];
+  for (const c of ok) for (const n of c.s.named) if (!labels.find((l) => l.register === n.register)) labels.push(n);
+  const rows = labels.map((l) => {
+    const vals = ok.map((c) => c.s.named.find((x) => x.register === l.register) || null);
+    const differ = new Set(vals.map((v) => (v ? v.raw : null))).size > 1;
+    return `<tr><td>${esc(l.label)} <span class="muted">· ${SOURCE[l.source] || esc(l.source)}</span></td>${vals.map((v) => `<td class="num"${differ ? ' style="font-weight:600"' : ''}>${v ? (v.value === null ? '–' : esc(v.value)) + (v.unit ? ' ' + esc(v.unit) : '') : '–'}</td>`).join('')}</tr>`;
+  }).join('');
+  const regs = [];
+  for (const c of ok) for (const o of c.s.other) if (!regs.includes(o.register)) regs.push(o.register);
+  const otherRows = regs.map((r) => `<tr><td>${r}</td>${ok.map((c) => { const o = c.s.other.find((x) => x.register === r); return `<td>${o ? o.raw : '–'}</td>`; }).join('')}</tr>`).join('');
+  const recent = (changes || []).slice(-10).reverse();
+  box.innerHTML = `<h2>Settings <span class="sub" style="font-weight:400">read ${hhmm(Date.parse(st.timestamp))} · read-only</span></h2>${info}
+    ${failed.length ? `<p>${status('warn', '!', 'Not all settings answered')} <span class="sub">${failed.join(' · ')}</span></p>` : ''}
+    <p class="sub" style="margin:8px 0">Change settings with the Seplos app or BMS Studio; this page shows them, and what changed. <i>checked</i> = matches a tested reference;
+      <i>GX driver</i> = from dbus-serialbattery; <i>inferred</i> = from the register layout. Bold = the packs differ.</p>
+    <p><b>Changes</b> ${recent.length ? '' : '<span class="muted">none since this page started collecting</span>'}</p>
+    ${recent.length ? `<div class="wide"><table class="left"><tr><th>When</th><th>Where</th><th>Setting</th><th>Was</th><th>Now</th></tr>${recent.map((c) => `<tr><td class="num">${hhmm(Date.parse(c.ts))}</td><td class="num">${esc(c.where)}</td><td>${esc(c.label)}</td><td class="num">${esc(c.from)} ${esc(c.unit)}</td><td class="num">${esc(c.to)} ${esc(c.unit)}</td></tr>`).join('')}</table></div>` : ''}
+    <div class="wide"><table><tr><th>Setting</th>${ok.map((c) => `<th>${c.name}</th>`).join('')}</tr>${rows}</table></div>
+    <details><summary>Other registers, meaning not known (${regs.length})</summary><div class="wide"><table><tr><th>Register</th>${ok.map((c) => `<th>${c.name}</th>`).join('')}</tr>${otherRows}</table></div></details>`;
+}
+
+const tile = (label, value, note, cls = '') => `<div class="card tile ${cls}"><div class="label">${esc(label)}</div><div class="value">${value}</div>${note ? `<div class="note">${note}</div>` : ''}</div>`;
+
+// ---- live part (every 15 s) ----
+let lastNow = null, lastHist = null, cellRange = null;
+function renderNow(data) {
+  lastNow = data;
+  const r = data.now, now = data.serverTime || Date.now();
+  const al = data.alerts || { active: [], log: [] };
+  $('alerts').innerHTML = al.active.length ? `<div class="card">${al.active.map((a) => status(a.level === 'crit' ? 'crit' : 'warn', a.level === 'crit' ? '✕' : '!', a.text) + ` <span class="muted">since ${hhmm(a.since)}</span>`).join('<br>')}</div>` : '';
+  $('alertlog').innerHTML = al.log.length ? `<div class="wide"><table class="left"><tr><th>When</th><th>Alert</th><th></th></tr>${al.log.slice().reverse().map((x) => `<tr><td class="num">${new Date(x.t).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</td><td>${esc(x.text)}</td><td>${x.state === 'raised' ? status(x.level === 'crit' ? 'crit' : 'warn', x.level === 'crit' ? '✕' : '!', 'raised') : status('good', '✓', 'cleared')}</td></tr>`).join('')}</table></div>` : '<p class="muted">No alerts so far.</p>';
+  if (!r) { $('age').innerHTML = status('warn', '!', 'No reading yet'); return; }
+  const ageS = Math.max(0, Math.round((now - Date.parse(r.timestamp)) / 1000));
+  const ageTxt = ageS < 90 ? `${ageS} s ago` : `${Math.round(ageS / 60)} min ago`;
+  $('age').innerHTML = ageS < 180 ? status('good', '✓', `Live · read ${ageTxt}`) : ageS < 600 ? status('warn', '!', `Last read ${ageTxt}`) : status('crit', '✕', `No new reading for ${Math.round(ageS / 60)} min`);
+  const err = data.error, b = $('banner');
+  if (err && Date.parse(err.ts) > Date.parse(r.timestamp)) { b.hidden = false; b.innerHTML = status('crit', '✕', 'The last read failed') + ` <span class="sub">${esc(err.message)}</span>`; } else b.hidden = true;
+
+  const s = r.system, sum = r.summary || {}, packs = (r.packs || []).filter((p) => !p.error);
+  const power = Math.round(s.voltage * s.current), e = data.energy || { today: {} }, td = e.today || {}, sys = data.sys, tt = data.timeTo || {};
+  const flow = (w, pos, neg) => (w === null || w === undefined ? '' : Math.abs(w) < 20 ? 'idle' : w > 0 ? pos : neg);
+  $('system').innerHTML = [
+    tile('Solar', kw(sys ? sys.pv : null), `today ${kwh(td.pv)}`),
+    tile('Loads', kw(sys ? sys.load : null), `today ${kwh(td.load)}`),
+    tile('Grid', kw(sys && sys.grid !== null ? Math.abs(sys.grid) : null), `${flow(sys ? sys.grid : null, 'importing', 'exporting')} · today in ${kwh(td.gridIn)}, out ${kwh(td.gridOut)}`),
+    tile('Battery', kw(Math.abs(power)), `${flow(power, 'charging', 'discharging')} · today in ${kwh(td.battIn)}, out ${kwh(td.battOut)}`)
+  ].join('') + (sys ? '' : '<p class="muted" style="grid-column:1/-1;margin:0">Solar, loads and grid: no values from the GX yet (the Victron nodes in the flow).</p>');
+  const toTxt = tt.hoursToEmpty !== null && tt.hoursToEmpty !== undefined ? ['Time to empty', dur(tt.hoursToEmpty)] : tt.hoursToFull !== null && tt.hoursToFull !== undefined ? ['Time to full', dur(tt.hoursToFull)] : ['Time to full / empty', 'idle'];
+  const temps = packs.flatMap((p) => p.cellTemps).filter((t) => t !== null);
+  const capSum = packs.reduce((a, p) => a + (p.capacityAh || 0), 0);
+  $('kpis').innerHTML = [
+    `<div class="card tile hero"><div class="label">State of charge</div><div class="value">${fmt(s.soc)} %</div>
+      <div class="meter" style="background:color-mix(in srgb, ${css('--s1')} 18%, var(--surface))" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${s.soc}" aria-label="State of charge"><b style="width:${Math.min(100, Math.max(0, s.soc))}%;background:${css('--s1')}"></b></div>
+      <div class="note">${fmt(s.remainingAh)} Ah left of ${capSum || s.capacityAh} Ah${capSum && capSum !== s.capacityAh ? ` (BMS says ${s.capacityAh})` : ''}</div></div>`,
+    tile(toTxt[0], toTxt[1], tt.iAvg !== undefined ? `at ${fmt(Math.abs(tt.iAvg))} A (5-min average)` : ''),
+    tile('Voltage', `${fmt(s.voltage, 2)} V`, `${packs.length} of ${s.packCount} packs read`),
+    tile('Current', `${fmt(s.current)} A`, `${flow(power, 'charging', 'discharging') || 'idle'} · ${power} W`),
+    tile('Health', `${fmt(s.soh)} %`, `${s.cycles} cycles (system)`),
+    tile('Cell gap', `${sum.deltaMv ?? '–'} mV`, `worst pack ${sum.worstPackDeltaMv ?? '–'} mV`),
+    tile('Lowest cell', `${fmt(sum.cellMin, 3)} V`, `${esc(sum.cellMinAt || '')} (P = pack, C = cell)`),
+    tile('Highest cell', `${fmt(sum.cellMax, 3)} V`, esc(sum.cellMaxAt || '')),
+    tile('Cell temperature', temps.length ? `${fmt(Math.min(...temps))}–${fmt(Math.max(...temps))} °C` : '–', 'lowest to highest, all packs'),
+    tile('Switches', '', (s.chargeFet ? status('good', '✓', 'Charge allowed') : status('crit', '✕', 'Charge blocked')) + '<br>' + (s.dischargeFet ? status('good', '✓', 'Discharge allowed') : status('crit', '✕', 'Discharge blocked')) + (s.heater ? '<br>' + status('warn', '!', 'Heater on') : '')),
+    tile('BMS alarms', s.problem ? status('crit', '✕', 'Alarm') : status('good', '✓', 'None'), s.problem ? `code ${esc(s.problemCode)}` : 'from the BMS status bits')
+  ].join('');
+
+  const packBox = $('packs'); const packOpen = [...packBox.querySelectorAll('details')].map((d) => d.open); packBox.replaceChildren();
+  (r.packs || []).forEach((p, k) => {
+    const card = document.createElement('div'); card.className = 'card';
+    const color = css(PACK[k % PACK.length]);
+    if (p.error) { card.innerHTML = `<div class="pack-head"><span class="swatch" style="background:${color}"></span><h2 style="margin:0">Pack ${p.pack}</h2></div>${status('crit', '✕', 'Not read')} <span class="sub">${esc(p.error)}</span>`; packBox.appendChild(card); return; }
+    const rng = cellRange && cellRange[k];
+    const v = p.cells.filter((c) => c !== null), avg = v.reduce((a, c) => a + c, 0) / v.length;
+    card.innerHTML = `<div class="pack-head"><span class="swatch" style="background:${color}"></span><h2 style="margin:0">Pack ${p.pack}</h2><span class="sub">${fmt(p.soc)} % · ${fmt(p.remainingAh)} of ${p.capacityAh} Ah</span></div>
+      <div class="meter" style="background:color-mix(in srgb, ${color} 18%, var(--surface))"><b style="width:${Math.min(100, Math.max(0, p.soc))}%;background:${color}"></b></div>
+      <div class="facts"><div><span>Voltage</span><b>${fmt(p.voltage, 2)} V</b></div><div><span>Current</span><b>${fmt(p.current, 2)} A</b></div><div><span>Health</span><b>${fmt(p.soh)} %</b></div>
+        <div><span>Cycles</span><b>${p.cycles}</b></div><div><span>Cell gap</span><b>${p.deltaMv} mV</b></div><div><span>Low / high cell</span><b>C${p.cellMinNo} / C${p.cellMaxNo}</b></div></div>
+      <h3>Cells now: difference from the pack average (mV)</h3><div class="cells"></div>
+      <div class="temps">Cell temperatures ${p.cellTemps.map((t) => `<b>${fmt(t)}</b>`).join(' · ')} °C · ambient <b>${fmt(p.ambient)}</b> · MOSFET <b>${fmt(p.mosfet)}</b> °C</div>
+      <details><summary>Cell table${rng ? ' (with low and high over the history range)' : ''}</summary><table><tr><th>Cell</th><th>Now (V)</th><th>vs average (mV)</th>${rng ? '<th>Low (V)</th><th>High (V)</th>' : ''}</tr>${
+        p.cells.map((c, i) => `<tr><td>${i + 1}${i + 1 === p.cellMaxNo ? ' (high)' : i + 1 === p.cellMinNo ? ' (low)' : ''}</td><td>${fmt(c, 3)}</td><td>${c === null ? '–' : Math.round((c - avg) * 1000)}</td>${
+          rng ? `<td>${rng.lo[i] === null ? '–' : (rng.lo[i] / 1000).toFixed(3)}</td><td>${rng.hi[i] === null ? '–' : (rng.hi[i] / 1000).toFixed(3)}</td>` : ''}</tr>`).join('')}</table></details>`;
+    packBox.appendChild(card);
+    later(() => cellChart(card.querySelector('.cells'), p));
+  });
+  packBox.querySelectorAll('details').forEach((d, i) => { if (packOpen[i]) d.open = true; });
+  drawPending();
+  keepOpen($('settings'), () => renderSettings(data.settings, data.settingsChanges));
+  $('raw').textContent = JSON.stringify(r, null, 2);
+}
+
+// ---- history part (every 60 s, or on range change) ----
+let range = store.get('seplos-range', '24h');
+function renderHistory(hist) {
+  lastHist = hist;
+  const pts = (hist.points || []).slice().sort((a, b) => a.t - b.t);
+  const times = pts.map((p) => p.t), week = hist.range === '7d', gapMs = week ? 45 * 60e3 : 5 * 60e3, stepMs = week ? 10 * 60e3 : 60e3; // a longer pause = missing data
+  const nPacks = Math.max(0, ...pts.map((p) => (p.ps || []).length));
+  const per = (key) => Array.from({ length: nPacks }, (_, k) => ({ name: `Pack ${k + 1}`, color: css(PACK[k % PACK.length]), values: pts.map((p) => (p[key] || [])[k] ?? null) }));
+  const one = (key, name = '') => [{ name, color: css('--s1'), values: pts.map((p) => p[key] ?? null) }];
+  const charts = $('charts'); const chartsOpen = [...charts.querySelectorAll('details')].map((d) => d.open); charts.replaceChildren();
+  lineChart(charts, { title: 'State of charge per pack (%)', unit: '%', digits: 1, times, series: per('ps'), gapMs });
+  lineChart(charts, { title: (week ? 'Largest cell gap per 10 min' : 'Cell gap') + ' per pack (mV)', unit: 'mV', digits: 0, times, series: per('pd'), gapMs });
+  lineChart(charts, { title: 'Battery power (W), + is charging', unit: 'W', digits: 0, times, series: one('p'), zero: true, gapMs });
+  lineChart(charts, { title: 'Solar, loads and grid (W)', unit: 'W', digits: 0, times, gapMs, zero: true, series: [
+    { name: 'Solar', color: css('--s4'), values: pts.map((p) => p.pv ?? null) },
+    { name: 'Grid', color: css('--s3'), values: pts.map((p) => p.grid ?? null) },
+    { name: 'Loads', color: css('--s5'), values: pts.map((p) => p.load ?? null) }] });
+  lineChart(charts, { title: 'Battery voltage (V)', unit: 'V', digits: 2, times, series: one('v'), gapMs });
+  lineChart(charts, { title: 'Lowest cell temperature (°C)', unit: '°C', digits: 1, times, series: one('tmin'), gapMs });
+  // energy per day: finished days + today
+  const e = (lastNow && lastNow.energy) || null;
+  const days = e ? (e.days || []).map((d) => ({ ...d, label: dayLabel(Date.parse(d.day + 'T12:00:00')) })).concat([{ ...(e.today || {}), today: true }]).slice(-8) : [];
+  energyChart(charts, days);
+  // cell trends
+  const heat = $('heat'); heat.replaceChildren();
+  let pauses = 0, lostMs = 0;
+  for (let i = 1; i < pts.length; i++) { const g = pts[i].t - pts[i - 1].t; if (g > gapMs) { pauses += 1; lostMs += g - stepMs; } }
+  const lost = lostMs >= 2 * 3600e3 ? (lostMs / 3600e3).toFixed(1) + ' h' : Math.round(lostMs / 60e3) + ' min';
+  $('trendsNote').textContent = (week ? '7 days, 10-minute averages' : '24 hours, one column a minute')
+    + (pauses ? ` · blank where no reading came: ${pauses} ${pauses > 1 ? 'pauses' : 'pause'}, ${lost} in all` : '');
+  cellRange = [];
+  for (let k = 0; k < nPacks; k++) cellRange[k] = heatmap(heat, k + 1, pts, css(PACK[k % PACK.length]), gapMs, stepMs);
+  if (!nPacks) heat.innerHTML = '<p class="muted">Collecting…</p>';
+  // table
+  const rows = pts.slice(-15).reverse();
+  $('table').innerHTML = rows.length ? `<table><tr><th>Time</th><th>V</th><th>A</th><th>W</th><th>SoC %</th>${Array.from({ length: nPacks }, (_, k) => `<th>P${k + 1} SoC</th><th>P${k + 1} gap</th>`).join('')}<th>Low °C</th><th>Solar</th><th>Grid</th><th>Loads</th></tr>${
+    rows.map((q) => `<tr><td>${week ? dayLabel(q.t) + ' ' : ''}${hhmm(q.t)}</td><td>${fmt(q.v, 2)}</td><td>${fmt(q.i)}</td><td>${fmt(q.p, 0)}</td><td>${fmt(q.soc)}</td>${
+      Array.from({ length: nPacks }, (_, k) => `<td>${fmt((q.ps || [])[k])}</td><td>${fmt((q.pd || [])[k], 0)}</td>`).join('')}<td>${fmt(q.tmin)}</td><td>${fmt(q.pv, 0)}</td><td>${fmt(q.grid, 0)}</td><td>${fmt(q.load, 0)}</td></tr>`).join('')}</table>` : '<p class="muted">No readings yet.</p>';
+  if (lastNow) renderNow(lastNow); // the cell tables use the range just loaded
+  drawPending();
+  charts.querySelectorAll('details').forEach((d, i) => { if (chartsOpen[i]) d.open = true; });
+}
+
+// ---- loading ----
+const base = location.pathname.replace(/\/+$/, '');
+const sample = window.__SEPLOS_SAMPLE;
+async function getJson(path) { const r = await fetch(base + path, { cache: 'no-store' }); if (!r.ok) throw new Error(r.status + ' ' + r.statusText); return r.json(); }
+async function loadNow() {
+  try { renderNow(sample ? sample.data : await getJson('/data')); } catch (e) { $('age').innerHTML = status('crit', '✕', 'Could not load the data: ' + e.message); }
+}
+async function loadHistory() {
+  try { renderHistory(sample ? sample[range] : await getJson('/history?range=' + range + '&cells=1')); } catch (e) { $('charts').innerHTML = `<p class="muted">Could not load the history: ${esc(e.message)}</p>`; }
+}
+document.querySelectorAll('.seg button').forEach((bt) => {
+  bt.setAttribute('aria-pressed', String(bt.dataset.r === range));
+  bt.addEventListener('click', () => {
+    range = bt.dataset.r; store.set('seplos-range', range);
+    document.querySelectorAll('.seg button').forEach((x) => x.setAttribute('aria-pressed', String(x === bt)));
+    loadHistory();
+  });
+});
+loadNow().then(loadHistory);
+if (!sample) { setInterval(loadNow, 15000); setInterval(loadHistory, 60000); }
+const redraw = () => { if (lastNow) renderNow(lastNow); if (lastHist) renderHistory(lastHist); };
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw);
+let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(redraw, 200); });
+</script>
+</body>
+</html>

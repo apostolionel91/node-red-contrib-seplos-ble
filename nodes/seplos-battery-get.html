@@ -1,0 +1,57 @@
+<script type="text/javascript">
+  RED.nodes.registerType('seplos-battery-get', {
+    category: 'Seplos',
+    color: '#d8eef8',
+    defaults: {
+      name: { value: '' },
+      device: { type: 'seplos-battery-device', required: true }
+    },
+    inputs: 1,
+    outputs: 1,
+    icon: 'font-awesome/fa-battery-three-quarters',
+    label: function () {
+      return this.name || 'Seplos read';
+    }
+  });
+</script>
+
+<script type="text/html" data-template-name="seplos-battery-get">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-device"><i class="fa fa-bluetooth"></i> Battery</label>
+    <input type="text" id="node-input-device">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="seplos-battery-get">
+  <p>Reads a Seplos V3 BMS over Bluetooth once per input message: connects, reads, disconnects
+  (so the Seplos phone app can still connect between reads). Read-only: it never changes a BMS setting.</p>
+  <h3>Output</h3>
+  <dl class="message-properties">
+    <dt>payload.system <span class="property-type">object</span></dt>
+    <dd><code>voltage</code>, <code>current</code>, <code>soc</code>, <code>soh</code>, <code>remainingAh</code>,
+    <code>capacityAh</code>, <code>cycles</code>, <code>packCount</code>, <code>chargeFet</code>,
+    <code>dischargeFet</code>, <code>problem</code>, <code>problemCode</code>.</dd>
+    <dt>payload.packs <span class="property-type">array</span></dt>
+    <dd>One per pack: the same totals, <code>cells</code> (16 voltages), <code>cellMin</code>/<code>cellMinNo</code>,
+    <code>cellMax</code>/<code>cellMaxNo</code>, <code>deltaMv</code>, <code>cellTemps</code> (4),
+    <code>ambient</code>, <code>mosfet</code>. A pack that did not answer has <code>error</code> instead.</dd>
+    <dt>payload.summary <span class="property-type">object</span></dt>
+    <dd><code>cellMin</code>/<code>cellMinAt</code> (e.g. <code>P2C7</code>), <code>cellMax</code>/<code>cellMaxAt</code>,
+    <code>deltaMv</code>, <code>worstPackDeltaMv</code>, <code>minCellTemp</code>, <code>maxCellTemp</code>.</dd>
+  </dl>
+  <p>A failed read sends nothing and raises an error (use a Catch node); the error names the step
+  (<code>find</code>, <code>connect</code>, <code>read</code>) and what to check.</p>
+  <p>An input sent while a read is still running is skipped. <code>msg.payload.address</code> overrides the MAC.</p>
+  <h3>Settings</h3>
+  <p><code>msg.payload = "settings"</code> reads the BMS settings instead (read-only): the protection and alarm
+  limits, capacity, the limits sent to the inverter, and per pack the model, firmware and serial. Output topic
+  <code>seplos/settings</code>; each named setting says how sure its name is (<code>tested</code>, <code>driver</code>,
+  <code>pattern</code>); the rest are listed by register. Change settings with the Seplos app or BMS Studio.</p>
+  <h3>Phone app</h3>
+  <p><code>msg.payload = "release"</code> (or <code>{ release: 30 }</code> minutes) disconnects and pauses reads, 10 minutes by
+  default, so the Seplos phone app can connect. <code>"resume"</code> ends the pause early.</p>
+</script>

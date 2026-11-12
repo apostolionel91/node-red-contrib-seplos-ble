@@ -1,0 +1,163 @@
+[
+  {
+    "id": "a7b0c1d2e3f40001",
+    "type": "comment",
+    "name": "GX health (read me)",
+    "info": "Every minute (and with \"check now\"): processor use and the three busiest programs, memory, Node-RED's own memory,\nCPU temperature, /data and system disk. Processor use is measured between two readings, so the first one says \"measuring\".\nThe summary shows under the \"GX health\" node. Click the button on the \"GX health details\" debug node to see everything.\nThe latest reading is also in global \"gx_health\" for other flows.\nAlerts (thresholds at the top of the function; must hold 5 min): memory below 100 MB, /data above 90 %,\nCPU above 80 °C, processor above 95 % used. They leave through the \"GX alerts\" link: wire a link-in from it\nto your Pushover node (msg.topic title, msg.payload text, msg.priority).",
+    "x": 130,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "a7b0c1d2e3f40002",
+    "type": "inject",
+    "name": "every minute",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "60",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "5",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 140,
+    "y": 100,
+    "wires": [
+      [
+        "a7b0c1d2e3f40004"
+      ]
+    ]
+  },
+  {
+    "id": "a7b0c1d2e3f40003",
+    "type": "inject",
+    "name": "check now",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 130,
+    "y": 140,
+    "wires": [
+      [
+        "a7b0c1d2e3f40004"
+      ]
+    ]
+  },
+  {
+    "id": "a7b0c1d2e3f40004",
+    "type": "exec",
+    "name": "read /proc and df",
+    "command": "echo \"memTotalKB=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)\"; echo \"memAvailKB=$(awk '/^MemAvailable:/{print $2}' /proc/meminfo)\"; echo \"load=$(cut -d' ' -f1-3 /proc/loadavg)\"; echo \"cores=$(grep -c ^processor /proc/cpuinfo)\"; echo \"nodeRssKB=$(awk '/^VmRSS:/{print $2}' /proc/$PPID/status)\"; echo \"temps=$(cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | tr '\\n' ' ')\"; echo \"data=$(df -kP /data 2>/dev/null | awk 'NR==2{print $2, $3, $4}')\"; echo \"root=$(df -kP / | awk 'NR==2{print $2, $3, $4}')\"; echo \"uptime=$(cut -d' ' -f1 /proc/uptime)\"; echo \"cpu=$(head -1 /proc/stat)\"; echo \"--procs\"; cat /proc/[0-9]*/stat 2>/dev/null",
+    "addpay": "",
+    "append": "",
+    "useSpawn": "false",
+    "timer": "20",
+    "winHide": false,
+    "oldrc": false,
+    "x": 330,
+    "y": 120,
+    "wires": [
+      [
+        "a7b0c1d2e3f40005"
+      ],
+      [
+        "a7b0c1d2e3f40008"
+      ],
+      []
+    ]
+  },
+  {
+    "id": "a7b0c1d2e3f40005",
+    "type": "function",
+    "name": "GX health",
+    "func": "// GX health in plain words. Reads the exec output (key=value lines, then \"--procs\" and one /proc/<pid>/stat\n// line per program), shows a verdict and the main numbers under this node, puts a plain summary first in\n// msg.payload, keeps the latest in global \"gx_health\", and raises/clears alerts.\n// Processor use is measured between two readings (the first one after a deploy says \"measuring\").\n// Output 1: the reading. Output 2: alerts for Pushover (msg.topic, msg.payload, msg.priority).\n// ---- limits: change here ----\nconst MEM_LOW_MB = 300;       // free memory below this: \"getting low\"\nconst MEM_ALERT_MB = 100;     // below this: alert\nconst STORAGE_WATCH_PCT = 70; // storage fuller than this: \"filling up\"\nconst STORAGE_ALERT_PCT = 90; // fuller than this: alert\nconst TEMP_WARM_C = 60;       // CPU warmer than this: \"warm\"\nconst TEMP_ALERT_C = 80;      // hotter than this: alert\nconst CPU_WATCH_PCT = 80;     // processor used more than this (all cores together): \"busy\"\nconst CPU_ALERT_PCT = 95;     // more than this: alert\nconst HOLD_MS = 5 * 60000;    // a problem must last this long to alert, and be gone this long to clear\n// friendly names for programs often seen on a GX (the program's own name is always shown too)\nconst KNOWN = [\n    [/^node-red$/, 'your Node-RED flows'],\n    [/^vrmlogger/, 'sends data to VRM'],\n    [/^dbus-ble-sens/, 'Bluetooth sensors'],\n    [/^bluetoothd$/, 'Bluetooth'],\n    [/^dbus-daemon$/, 'internal message bus'],\n    [/^(gui|venus-gui)/, 'screen and Remote Console']\n];\n\nconst text = String(msg.payload || '');\nconst cut = text.indexOf('\\n--procs');\nconst head = cut < 0 ? text : text.slice(0, cut), procText = cut < 0 ? '' : text.slice(cut + 9);\nconst kv = {};\nfor (const line of head.split('\\n')) {\n    const i = line.indexOf('=');\n    if (i > 0) kv[line.slice(0, i).trim()] = line.slice(i + 1).trim();\n}\nconst num = (s) => { const v = parseFloat(s); return Number.isFinite(v) ? v : null; };\nconst nums = (s) => String(s || '').split(/\\s+/).map(num).filter((v) => v !== null);\nconst [load1, load5, load15] = nums(kv.load);\nconst temps = nums(kv.temps).map((t) => (t > 1000 ? t / 1000 : t)); // milli-degrees on most kernels\nconst df = (s) => { const [size, used, avail] = nums(s); return size ? { sizeMB: Math.round(size / 1024), usedMB: Math.round(used / 1024), freeMB: Math.round(avail / 1024), usedPct: Math.round(used / size * 100) } : null; };\nconst memTotal = num(kv.memTotalKB), memAvail = num(kv.memAvailKB), nodeRss = num(kv.nodeRssKB);\nconst cores = num(kv.cores);\n\n// ---- processor: share of all cores used since the last reading, and which programs used it ----\n// /proc/stat \"cpu\" line: user nice system idle iowait irq softirq steal (guest is already inside user)\nconst cpuF = nums(String(kv.cpu || '').replace(/^cpu\\s*/, ''));\nconst now = cpuF.length >= 4 ? { total: cpuF.slice(0, 8).reduce((a, b) => a + b, 0), idle: cpuF[3], iowait: cpuF[4] || 0, procs: {} } : null;\nfor (const line of procText.split('\\n')) {\n    const a = line.indexOf('('), b = line.lastIndexOf(')');\n    if (a < 1 || b < a) continue;\n    const f = line.slice(b + 2).split(' '); // after the name: state ppid ... utime (12th) stime (13th)\n    const used = Number(f[11]) + Number(f[12]);\n    if (now && Number.isFinite(used)) now.procs[line.slice(0, a).trim()] = { name: line.slice(a + 1, b), used };\n}\nconst prev = context.get('cpu');\nlet cpuUsePct = null, ioWaitPct = null, busiest = [];\nif (now && prev && now.total > prev.total) {\n    const dT = now.total - prev.total;\n    cpuUsePct = Math.max(0, Math.min(100, Math.round((dT - (now.idle + now.iowait - prev.idle - prev.iowait)) * 100 / dT)));\n    ioWaitPct = Math.max(0, Math.round((now.iowait - prev.iowait) / dT * 100));\n    const byName = {};\n    for (const [pid, p] of Object.entries(now.procs)) {\n        const q = prev.procs[pid];\n        if (q && q.name === p.name && p.used >= q.used) byName[p.name] = (byName[p.name] || 0) + (p.used - q.used);\n    }\n    busiest = Object.entries(byName).map(([name, d]) => ({ name, pct: Math.round(d / dT * 1000) / 10 }))\n        .filter((p) => p.pct >= 0.5).sort((x, y) => y.pct - x.pct).slice(0, 3);\n}\nif (now) context.set('cpu', now);\n\nconst h = {\n    summary: null, // filled below, first so it shows first in the debug sidebar\n    ts: new Date().toISOString(),\n    cores,\n    cpuUsePct,   // % of the whole processor (all cores) used since the last reading\n    ioWaitPct,   // % of the time spent waiting for storage\n    busiest,     // the three programs that used the most, % of the whole processor\n    load1, load5, load15, // load averages: also count programs waiting for storage\n    memTotalMB: memTotal === null ? null : Math.round(memTotal / 1024),\n    memAvailMB: memAvail === null ? null : Math.round(memAvail / 1024),\n    nodeRedMB: nodeRss === null ? null : Math.round(nodeRss / 1024),\n    cpuTempC: temps.length ? Math.round(Math.max(...temps) * 10) / 10 : null,\n    data: df(kv.data),\n    root: df(kv.root),\n    uptimeDays: num(kv.uptime) === null ? null : Math.round(num(kv.uptime) / 86400 * 10) / 10\n};\nif (h.memTotalMB === null && load1 === undefined) {\n    node.status({ fill: 'red', shape: 'ring', text: 'Could not read the GX (see \"exec errors\")' });\n    return [null, null];\n}\n\n// ---- plain words: level 0 = fine, 1 = keep an eye on it, 2 = problem ----\nconst gb = (mb) => (mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb + ' MB');\nconst friendly = (name) => { const k = KNOWN.find(([re]) => re.test(name)); return k ? `${name} (${k[1]})` : name; };\nconst checks = [];\nif (h.cpuUsePct !== null) {\n    const lvl = h.cpuUsePct > CPU_ALERT_PCT ? 2 : h.cpuUsePct > CPU_WATCH_PCT ? 1 : 0;\n    checks.push({ lvl, short: `CPU ${h.cpuUsePct} % used`, line: `Processor: ${h.cpuUsePct} % used over the last minute, all cores together (${['normal', 'busy', 'overloaded'][lvl]})`\n        + (h.ioWaitPct >= 5 ? `, plus ${h.ioWaitPct} % of the time waiting for storage` : ''), what: ['', 'the processor is busy', 'the processor is overloaded'][lvl] });\n    if (h.busiest.length) checks.push({ lvl: 0, line: 'Busiest programs: ' + h.busiest.map((p) => `${friendly(p.name)} ${p.pct} %`).join(', ') });\n} else checks.push({ lvl: 0, short: 'CPU measuring…', line: 'Processor: measuring, ready at the next reading (one minute)' });\nif (h.memAvailMB !== null) {\n    const lvl = h.memAvailMB < MEM_ALERT_MB ? 2 : h.memAvailMB < MEM_LOW_MB ? 1 : 0;\n    checks.push({ lvl, short: `${h.memAvailMB} MB memory free`, line: `Memory: ${h.memAvailMB} MB free of ${h.memTotalMB} MB (${['plenty', 'getting low', 'low'][lvl]})`, what: ['', 'memory is getting low', 'memory is low'][lvl] });\n}\nif (h.nodeRedMB !== null) checks.push({ lvl: 0, line: `Node-RED is using ${h.nodeRedMB} MB of that memory` });\nif (h.cpuTempC !== null) {\n    const lvl = h.cpuTempC > TEMP_ALERT_C ? 2 : h.cpuTempC > TEMP_WARM_C ? 1 : 0;\n    checks.push({ lvl, short: `${Math.round(h.cpuTempC)} °C`, line: `Temperature: ${h.cpuTempC} °C (${['normal', 'warm', 'hot'][lvl]})`, what: ['', 'it is running warm', 'it is hot'][lvl] });\n}\nif (h.data) {\n    const lvl = h.data.usedPct > STORAGE_ALERT_PCT ? 2 : h.data.usedPct > STORAGE_WATCH_PCT ? 1 : 0;\n    checks.push({ lvl, short: `storage ${h.data.usedPct} % full`, line: `Storage for Node-RED and add-ons: ${h.data.usedPct} % full, ${gb(h.data.freeMB)} free (${['plenty of room', 'filling up', 'almost full'][lvl]})`, what: ['', 'storage is filling up', 'storage is almost full'][lvl] });\n}\nif (h.root) checks.push({ lvl: 0, line: `System disk: ${h.root.usedPct} % full (holds the Victron firmware; a high figure here is normal)` });\nif (h.uptimeDays !== null) checks.push({ lvl: 0, line: `Running for ${h.uptimeDays} days since the last restart` });\n\nconst worst = Math.max(0, ...checks.map((c) => c.lvl));\nconst reasons = checks.filter((c) => c.lvl === worst && c.lvl > 0).map((c) => c.what);\nconst verdict = worst === 0 ? 'All good' : (worst === 1 ? 'Keep an eye on it: ' : 'Problem: ') + reasons.join(', ');\nh.summary = [verdict].concat(checks.map((c) => c.line));\nglobal.set('gx_health', h);\n\n// ---- alerts (only the \"problem\" level, after it lasts HOLD_MS) ----\nconst t = Date.now();\nconst conds = {};\nif (h.memAvailMB !== null && h.memAvailMB < MEM_ALERT_MB) conds.mem = `The GX is low on memory: only ${h.memAvailMB} MB free`;\nif (h.data && h.data.usedPct > STORAGE_ALERT_PCT) conds.data = `The GX storage is almost full: ${h.data.usedPct} % used, ${gb(h.data.freeMB)} free`;\nif (h.cpuTempC !== null && h.cpuTempC > TEMP_ALERT_C) conds.temp = `The GX is hot: ${h.cpuTempC} °C`;\nif (h.cpuUsePct !== null && h.cpuUsePct > CPU_ALERT_PCT) conds.cpu = `The GX is overloaded: processor ${h.cpuUsePct} % used` + (h.busiest.length ? ` (busiest: ${h.busiest[0].name})` : '');\nconst st = context.get('alerts') || {};\nconst box = global.get('gx_health_alerts') || { active: [], log: [] };\nconst out = [];\nfor (const key of ['mem', 'data', 'temp', 'cpu']) {\n    const a = st[key] || (st[key] = { active: false, trueSince: null, falseSince: null });\n    if (conds[key]) {\n        a.falseSince = null; a.text = conds[key];\n        if (a.trueSince === null) a.trueSince = t;\n        if (!a.active && t - a.trueSince >= HOLD_MS) {\n            a.active = true; a.since = t;\n            box.log.push({ t, key, text: a.text, state: 'raised' });\n            out.push({ topic: 'Cerbo GX', payload: a.text + ' (for 5 minutes)', priority: 0 });\n        }\n    } else {\n        a.trueSince = null;\n        if (a.active) {\n            if (a.falseSince === null) a.falseSince = t;\n            if (t - a.falseSince >= HOLD_MS) {\n                a.active = false;\n                box.log.push({ t, key, text: a.text, state: 'cleared' });\n                out.push({ topic: 'Cerbo GX', payload: 'Back to normal: ' + a.text.replace(/^The GX (storage )?is /, ''), priority: -1 });\n            }\n        }\n    }\n}\ndelete st.load; // the old load-average alert, replaced by \"cpu\"\ncontext.set('alerts', st);\nbox.active = Object.entries(st).filter(([, a]) => a.active).map(([key, a]) => ({ key, text: a.text, since: a.since }));\nwhile (box.log.length > 30) box.log.shift();\nglobal.set('gx_health_alerts', box);\n\nnode.status({ fill: ['green', 'yellow', 'red'][worst], shape: 'dot', text: [verdict].concat(checks.filter((c) => c.short).map((c) => c.short)).join(' · ') });\nmsg.payload = h;\nreturn [msg, out.length ? out : null];\n",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 520,
+    "y": 120,
+    "wires": [
+      [
+        "a7b0c1d2e3f40006"
+      ],
+      [
+        "a7b0c1d2e3f40007",
+        "a7b0c1d2e3f40009"
+      ]
+    ]
+  },
+  {
+    "id": "a7b0c1d2e3f40006",
+    "type": "debug",
+    "name": "GX health details",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 730,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "a7b0c1d2e3f40007",
+    "type": "link out",
+    "name": "GX alerts",
+    "mode": "link",
+    "links": [],
+    "x": 695,
+    "y": 140,
+    "wires": []
+  },
+  {
+    "id": "a7b0c1d2e3f40009",
+    "type": "debug",
+    "name": "GX alert",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 710,
+    "y": 180,
+    "wires": []
+  },
+  {
+    "id": "a7b0c1d2e3f40008",
+    "type": "debug",
+    "name": "exec errors",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 520,
+    "y": 180,
+    "wires": []
+  }
+]

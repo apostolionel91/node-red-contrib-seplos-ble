@@ -1,0 +1,731 @@
+[
+  {
+    "id": "f6a0b1e5c0de0001",
+    "type": "comment",
+    "name": "Seplos battery page: /seplos on this Node-RED address (read me)",
+    "info": "Seplos battery page: open /seplos on this Node-RED address, e.g. https://venus.local:1881/seplos\n\nReads every 15 s with the connection kept open. Phone app: click \"release for the phone app\" first (10 min).\nSettings: read 40 s after deploy, every 6 h, or with \"read settings now\" (read-only; change them in the Seplos app).\nHistory: 24 h at one point a minute (every cell) and 7 days of 10-minute averages, saved to\n  /data/home/nodered/seplos/history.json every 30 min and put back after a restart.\nEnergy per day: battery, solar, loads, grid (the four Victron \"System\" nodes feed solar, grid, loads, battery).\nAlerts: thresholds at the top of \"keep + history + alerts\". They show on the page and leave through the\n  \"Seplos alerts\" link: wire a link-in from it to your Pushover node (msg.topic title, msg.payload text, msg.priority).\nNothing here changes a BMS setting.",
+    "x": 260,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "f6a0b1e5c0de0002",
+    "type": "inject",
+    "name": "every 15 s",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "15",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "10",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 150,
+    "y": 100,
+    "wires": [
+      [
+        "f6a0b1e5c0de0010"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0003",
+    "type": "inject",
+    "name": "release for the phone app (10 min)",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "release",
+    "payloadType": "str",
+    "x": 210,
+    "y": 140,
+    "wires": [
+      [
+        "f6a0b1e5c0de0010"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0004",
+    "type": "inject",
+    "name": "resume reading",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "resume",
+    "payloadType": "str",
+    "x": 170,
+    "y": 180,
+    "wires": [
+      [
+        "f6a0b1e5c0de0010"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0005",
+    "type": "inject",
+    "name": "settings: on deploy, then every 6 h",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "21600",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "40",
+    "topic": "",
+    "payload": "settings",
+    "payloadType": "str",
+    "x": 200,
+    "y": 220,
+    "wires": [
+      [
+        "f6a0b1e5c0de0010"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0006",
+    "type": "inject",
+    "name": "read settings now",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "settings",
+    "payloadType": "str",
+    "x": 170,
+    "y": 260,
+    "wires": [
+      [
+        "f6a0b1e5c0de0010"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0007",
+    "type": "inject",
+    "name": "alert tick (1 min)",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "60",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "seplos/tick",
+    "payload": "",
+    "payloadType": "date",
+    "x": 170,
+    "y": 300,
+    "wires": [
+      [
+        "f6a0b1e5c0de0011"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0010",
+    "type": "seplos-battery-get",
+    "name": "Seplos read",
+    "device": "f6a0b1e5c0de0090",
+    "x": 450,
+    "y": 180,
+    "wires": [
+      [
+        "f6a0b1e5c0de0011"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0011",
+    "type": "function",
+    "name": "keep + history + alerts",
+    "func": "// Seplos keep: readings, settings and the alert tick all come here.\n// Output 1: the message through. Output 2: alerts (msg.topic, msg.payload text, msg.priority) for Pushover.\n// ---- alert thresholds: change here ----\nconst CELL_HIGH_V = 3.55;   // any cell at or above (same as Battery Watch's cell band)\nconst CELL_LOW_V = 3.00;    // any cell at or below\nconst GAP_MV = 50;          // cell gap inside one pack\nconst COLD_C = 5;           // lowest cell temperature below\nconst STALE_MIN = 5;        // no good reading for this long\nconst RAISE_MS = 30000;     // a condition must hold this long before it alerts\nconst CLEAR_MS = 120000;    // and be gone this long before it clears\n\nconst r = msg.payload;\nconst now = Date.now();\nconst day = (t) => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };\n\n// ---------------- settings ----------------\nif (msg.topic === 'seplos/settings') {\n    const before = global.get('seplos_settings');\n    const regs = (s) => {\n        const m = new Map();\n        if (s && !s.error) {\n            for (const n of s.named || []) m.set(n.register, { raw: n.raw, label: n.label, value: n.value, unit: n.unit });\n            for (const o of s.other || []) m.set(o.register, { raw: o.raw, label: 'register ' + o.register, value: o.raw, unit: '' });\n        }\n        return m;\n    };\n    const changes = global.get('seplos_settings_changes') || [];\n    const compare = (where, a, b) => {\n        const ma = regs(a);\n        for (const [reg, nb] of regs(b)) {\n            const na = ma.get(reg);\n            if (na && na.raw !== nb.raw) changes.push({ ts: r.timestamp, where, register: reg, label: nb.label, from: na.value, to: nb.value, unit: nb.unit });\n        }\n    };\n    if (before) {\n        compare('system', before.system, r.system);\n        for (const pb of r.packs || []) {\n            const pa = (before.packs || []).find((p) => p.pack === pb.pack);\n            if (pa) compare('pack ' + pb.pack, pa.settings, pb.settings);\n        }\n    }\n    while (changes.length > 50) changes.shift();\n    global.set('seplos_settings_changes', changes);\n    global.set('seplos_settings', r);\n    return [msg, null];\n}\n\n// ---------------- alerts ----------------\nfunction alerts(evaluated, conds, t) {\n    const st = context.get('alerts') || {};\n    const box = global.get('seplos_alerts') || { active: [], log: [] };\n    const out = [];\n    for (const key of evaluated) {\n        const c = conds[key];\n        const a = st[key] || (st[key] = { active: false, trueSince: null, falseSince: null });\n        if (c) {\n            a.falseSince = null;\n            a.text = c.text; a.level = c.level;\n            if (a.trueSince === null) a.trueSince = t;\n            if (!a.active && t - a.trueSince >= RAISE_MS) {\n                a.active = true; a.since = t;\n                box.log.push({ t, key, level: c.level, text: c.text, state: 'raised' });\n                out.push({ topic: 'Seplos battery', payload: c.text, priority: c.level === 'crit' ? 1 : 0 });\n            }\n        } else {\n            a.trueSince = null;\n            if (a.active) {\n                if (a.falseSince === null) a.falseSince = t;\n                if (t - a.falseSince >= CLEAR_MS) {\n                    a.active = false;\n                    box.log.push({ t, key, level: a.level, text: a.text, state: 'cleared' });\n                    out.push({ topic: 'Seplos battery', payload: 'OK again: ' + a.text, priority: -1 });\n                }\n            }\n        }\n    }\n    context.set('alerts', st);\n    box.active = Object.entries(st).filter(([, a]) => a.active).map(([key, a]) => ({ key, level: a.level, text: a.text, since: a.since }));\n    while (box.log.length > 30) box.log.shift();\n    global.set('seplos_alerts', box);\n    return out.length ? out : null;\n}\n\nconst STALE_KEYS = ['stale'];\nconst READ_KEYS = ['cellHigh', 'cellLow', 'gap', 'cold', 'bms', 'chargeBlocked', 'dischargeBlocked', 'packMissing'];\n\nif (msg.topic === 'seplos/tick') {\n    const last = global.get('seplos');\n    const age = last ? now - Date.parse(last.timestamp) : Infinity;\n    const conds = {};\n    if (age >= STALE_MIN * 60000) conds.stale = { level: 'crit', text: last ? `No battery reading for ${Math.round(age / 60000)} min` : 'No battery reading yet' };\n    return [null, alerts(STALE_KEYS, conds, now)];\n}\n\n// ---------------- a reading ----------------\nconst t = Date.parse(r.timestamp) || now;\nconst prev = global.get('seplos');\nglobal.set('seplos', r);\nconst s = r.system;\nconst packs = (r.packs || []).slice().sort((a, b) => a.pack - b.pack);\nconst good = packs.filter((p) => !p.error);\nconst sysv = global.get('seplos_sys');\nconst sys = sysv && t - sysv.t < 60000 ? sysv : null;\nconst power = Math.round(s.voltage * s.current);\n\n// energy today (Wh), per day for 7 days\nconst e = global.get('seplos_energy') || { day: day(t), lastT: null, today: {}, days: [] };\nif (e.day !== day(t)) {\n    e.days.push({ day: e.day, ...e.today });\n    while (e.days.length > 7) e.days.shift();\n    e.day = day(t); e.today = {};\n}\nconst add = (k, wh) => { e.today[k] = (e.today[k] || 0) + wh; }; // exact sums; round only for display\nconst dtH = e.lastT ? (t - e.lastT) / 3600000 : 0;\nif (dtH > 0 && dtH <= 120 / 3600) {\n    add(power >= 0 ? 'battIn' : 'battOut', Math.abs(power) * dtH);\n    if (sys) {\n        if (typeof sys.pv === 'number') add('pv', Math.max(0, sys.pv) * dtH);\n        if (typeof sys.load === 'number') add('load', Math.max(0, sys.load) * dtH);\n        if (typeof sys.grid === 'number') add(sys.grid >= 0 ? 'gridIn' : 'gridOut', Math.abs(sys.grid) * dtH);\n    }\n}\ne.lastT = t;\nglobal.set('seplos_energy', e);\n\n// time to full / empty from the current averaged over ~5 min\nconst dtS = prev ? Math.max(0, (t - Date.parse(prev.timestamp)) / 1000) : 0;\nlet iAvg = context.get('iAvg');\niAvg = iAvg === undefined || dtS > 600 ? s.current : iAvg + (1 - Math.exp(-dtS / 300)) * (s.current - iAvg);\ncontext.set('iAvg', iAvg);\nconst cap = good.length === s.packCount && good.length ? good.reduce((a, p) => a + p.capacityAh, 0) : s.capacityAh;\nconst remaining = good.length === s.packCount && good.length ? good.reduce((a, p) => a + p.remainingAh, 0) : s.remainingAh;\nglobal.set('seplos_timeto', {\n    iAvg: Math.round(iAvg * 10) / 10,\n    capacityAh: cap,\n    hoursToEmpty: iAvg < -0.5 ? Math.round(remaining / -iAvg * 10) / 10 : null,\n    hoursToFull: iAvg > 0.5 ? Math.round(Math.max(0, cap - remaining) / iAvg * 10) / 10 : null\n});\n\n// history: one point a minute for 24 h; 10-minute averages for 7 days\nconst h1 = global.get('seplos_h1') || [];\nif (!h1.length || t - h1[h1.length - 1].t >= 55000) {\n    const pt = {\n        t, v: s.voltage, i: s.current, p: power, soc: s.soc,\n        ps: packs.map((p) => (p.error ? null : p.soc)),\n        pd: packs.map((p) => (p.error ? null : p.deltaMv)),\n        tmin: r.summary ? r.summary.minCellTemp : null,\n        cells: packs.map((p) => (p.error ? null : p.cells.map((c) => (c === null ? null : Math.round(c * 1000))))),\n        bal: packs.map((p) => (p.balancing ? p.balancing.cells : null)),\n        pv: sys ? sys.pv : null, grid: sys ? sys.grid : null, load: sys ? sys.load : null\n    };\n    h1.push(pt);\n    while (h1.length && (h1[0].t < t - 24 * 3600000 || h1.length > 1500)) h1.shift();\n    global.set('seplos_h1', h1);\n\n    const h7 = global.get('seplos_h7') || [];\n    const bucket = Math.floor(t / 600000) * 600000;\n    let b = h7.length && h7[h7.length - 1].t === bucket ? h7[h7.length - 1] : null;\n    const avg = (old, x, n) => (x === null || x === undefined ? old : old === null || old === undefined ? x : Math.round((old + (x - old) / n) * 100) / 100);\n    if (!b) {\n        b = { t: bucket, _n: 0, v: null, i: null, p: null, soc: null, ps: [], pd: [], tmin: null, cells: [], pv: null, grid: null, load: null };\n        h7.push(b);\n    }\n    b._n += 1;\n    for (const k of ['v', 'i', 'p', 'soc', 'pv', 'grid', 'load']) b[k] = avg(b[k], pt[k], b._n);\n    pt.ps.forEach((x, k) => { b.ps[k] = avg(b.ps[k] ?? null, x, b._n); });\n    pt.pd.forEach((x, k) => { if (x !== null) b.pd[k] = Math.max(b.pd[k] ?? x, x); });\n    if (pt.tmin !== null) b.tmin = b.tmin === null ? pt.tmin : Math.min(b.tmin, pt.tmin);\n    pt.cells.forEach((cs, k) => {\n        if (!cs) return;\n        b.cells[k] = b.cells[k] || cs.slice();\n        cs.forEach((x, j) => { b.cells[k][j] = Math.round(avg(b.cells[k][j], x, b._n)); });\n    });\n    while (h7.length && h7[0].t < t - 7 * 24 * 3600000) h7.shift();\n    global.set('seplos_h7', h7);\n}\n\n// alerts from this reading\nconst conds = {};\nlet hi = null; let lo = null;\nfor (const p of good) p.cells.forEach((c, j) => {\n    if (c === null) return;\n    if (!hi || c > hi.v) hi = { v: c, at: `P${p.pack}C${j + 1}` };\n    if (!lo || c < lo.v) lo = { v: c, at: `P${p.pack}C${j + 1}` };\n});\nif (hi && hi.v >= CELL_HIGH_V) conds.cellHigh = { level: 'warn', text: `Cell ${hi.at} high: ${hi.v.toFixed(3)} V (alert at ${CELL_HIGH_V} V)` };\nif (lo && lo.v <= CELL_LOW_V) conds.cellLow = { level: 'warn', text: `Cell ${lo.at} low: ${lo.v.toFixed(3)} V (alert at ${CELL_LOW_V} V)` };\nconst worst = good.reduce((w, p) => (p.deltaMv !== null && (!w || p.deltaMv > w.deltaMv) ? p : w), null);\nif (worst && worst.deltaMv >= GAP_MV) conds.gap = { level: 'warn', text: `Cell gap ${worst.deltaMv} mV in pack ${worst.pack} (alert at ${GAP_MV} mV)` };\nconst tmin = r.summary ? r.summary.minCellTemp : null;\nif (tmin !== null && tmin < COLD_C) conds.cold = { level: 'warn', text: `Cells cold: ${tmin} °C (alert below ${COLD_C} °C)` };\nif (s.problem) conds.bms = { level: 'crit', text: `BMS alarm bits set (code ${s.problemCode})` };\nif (!s.chargeFet) conds.chargeBlocked = { level: 'crit', text: 'The BMS has blocked charging' };\nif (!s.dischargeFet) conds.dischargeBlocked = { level: 'crit', text: 'The BMS has blocked discharging' };\nconst missing = packs.filter((p) => p.error).map((p) => p.pack);\nif (missing.length) conds.packMissing = { level: 'warn', text: `Pack ${missing.join(', ')} not read` };\nconst out2 = alerts(READ_KEYS.concat(STALE_KEYS), conds, t); // a good reading also clears \"stale\"\nreturn [msg, out2];\n",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 680,
+    "y": 180,
+    "wires": [
+      [
+        "f6a0b1e5c0de0012"
+      ],
+      [
+        "f6a0b1e5c0de0016"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0012",
+    "type": "debug",
+    "name": "seplos reading",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 900,
+    "y": 160,
+    "wires": []
+  },
+  {
+    "id": "f6a0b1e5c0de0016",
+    "type": "link out",
+    "name": "Seplos alerts",
+    "mode": "link",
+    "links": [],
+    "x": 865,
+    "y": 200,
+    "wires": []
+  },
+  {
+    "id": "f6a0b1e5c0de0017",
+    "type": "debug",
+    "name": "Seplos alert",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 900,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "f6a0b1e5c0de0013",
+    "type": "catch",
+    "name": "read errors",
+    "scope": [
+      "f6a0b1e5c0de0010"
+    ],
+    "uncaught": false,
+    "x": 450,
+    "y": 340,
+    "wires": [
+      [
+        "f6a0b1e5c0de0014"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0014",
+    "type": "function",
+    "name": "keep last error",
+    "func": "global.set('seplos_error', { ts: new Date().toISOString(), message: (msg.error && msg.error.message) || 'read failed' });\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 640,
+    "y": 340,
+    "wires": [
+      [
+        "f6a0b1e5c0de0015"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0015",
+    "type": "debug",
+    "name": "Seplos error",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "error.message",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 850,
+    "y": 340,
+    "wires": []
+  },
+  {
+    "id": "f6a0b1e5c0de0030",
+    "type": "victron-input-system",
+    "client": "victron-client-id",
+    "service": "com.victronenergy.system",
+    "path": "/Dc/Pv/Power",
+    "serviceObj": {
+      "service": "com.victronenergy.system",
+      "name": "Venus system"
+    },
+    "pathObj": {
+      "path": "/Dc/Pv/Power",
+      "type": "float",
+      "name": "MPPTs - power (W)"
+    },
+    "name": "pv",
+    "onlyChanges": false,
+    "roundValues": "no",
+    "rateLimit": 0,
+    "outputs": 1,
+    "x": 150,
+    "y": 420,
+    "wires": [
+      [
+        "f6a0b1e5c0de0040"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0031",
+    "type": "victron-input-system",
+    "client": "victron-client-id",
+    "service": "com.victronenergy.system",
+    "path": "/Ac/Grid/L1/Power",
+    "serviceObj": {
+      "service": "com.victronenergy.system",
+      "name": "Venus system"
+    },
+    "pathObj": {
+      "path": "/Ac/Grid/L1/Power",
+      "type": "float",
+      "name": "Grid L1 (W)"
+    },
+    "name": "grid",
+    "onlyChanges": false,
+    "roundValues": "no",
+    "rateLimit": 0,
+    "outputs": 1,
+    "x": 150,
+    "y": 460,
+    "wires": [
+      [
+        "f6a0b1e5c0de0040"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0032",
+    "type": "victron-input-system",
+    "client": "victron-client-id",
+    "service": "com.victronenergy.system",
+    "path": "/Ac/Consumption/L1/Power",
+    "serviceObj": {
+      "service": "com.victronenergy.system",
+      "name": "Venus system"
+    },
+    "pathObj": {
+      "path": "/Ac/Consumption/L1/Power",
+      "type": "float",
+      "name": "AC Consumption L1 (W)"
+    },
+    "name": "load",
+    "onlyChanges": false,
+    "roundValues": "no",
+    "rateLimit": 0,
+    "outputs": 1,
+    "x": 150,
+    "y": 500,
+    "wires": [
+      [
+        "f6a0b1e5c0de0040"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0033",
+    "type": "victron-input-system",
+    "client": "victron-client-id",
+    "service": "com.victronenergy.system",
+    "path": "/Dc/Battery/Power",
+    "serviceObj": {
+      "service": "com.victronenergy.system",
+      "name": "Venus system"
+    },
+    "pathObj": {
+      "path": "/Dc/Battery/Power",
+      "type": "float",
+      "name": "Battery Power (W)"
+    },
+    "name": "batt",
+    "onlyChanges": false,
+    "roundValues": "no",
+    "rateLimit": 0,
+    "outputs": 1,
+    "x": 150,
+    "y": 540,
+    "wires": [
+      [
+        "f6a0b1e5c0de0040"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0040",
+    "type": "function",
+    "name": "keep system values",
+    "func": "const s = global.get('seplos_sys') || {};\ns[msg.topic] = typeof msg.payload === 'number' ? msg.payload : null;\ns.t = Date.now();\nglobal.set('seplos_sys', s);\nreturn null;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 400,
+    "y": 480,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0050",
+    "type": "inject",
+    "name": "load saved history (on deploy)",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "3",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 200,
+    "y": 600,
+    "wires": [
+      [
+        "f6a0b1e5c0de0051"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0051",
+    "type": "file in",
+    "name": "read history.json",
+    "filename": "/data/home/nodered/seplos/history.json",
+    "filenameType": "str",
+    "format": "utf8",
+    "chunk": false,
+    "sendError": false,
+    "encoding": "none",
+    "allProps": false,
+    "x": 430,
+    "y": 600,
+    "wires": [
+      [
+        "f6a0b1e5c0de0052"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0052",
+    "type": "function",
+    "name": "restore history",
+    "func": "// On deploy: put the saved history back (older points only; anything read since start is kept)\nlet d;\ntry { d = JSON.parse(msg.payload); } catch (e) { node.warn('history file unreadable: ' + e.message); return null; }\nif (!d || d.v !== 1) return null;\nconst now = Date.now();\nconst merge = (key, keepMs) => {\n    const cur = global.get(key) || [];\n    const first = cur.length ? cur[0].t : Infinity;\n    const old = (d[key.replace('seplos_', '')] || []).filter((p) => p.t < first && p.t > now - keepMs);\n    global.set(key, old.concat(cur));\n    return old.length;\n};\nconst n1 = merge('seplos_h1', 24 * 3600000);\nmerge('seplos_h7', 7 * 24 * 3600000);\nconst saved = d.energy;\nif (saved) {\n    const e = global.get('seplos_energy');\n    if (!e) global.set('seplos_energy', saved);\n    else {\n        if (saved.day === e.day) for (const [k, v] of Object.entries(saved.today || {})) e.today[k] = (e.today[k] || 0) + v;\n        else if (!e.days.some((x) => x.day === saved.day)) e.days.push({ day: saved.day, ...saved.today });\n        const known = new Set(e.days.map((x) => x.day));\n        e.days = (saved.days || []).filter((x) => !known.has(x.day) && x.day !== e.day).concat(e.days).sort((a, b) => (a.day < b.day ? -1 : 1)).slice(-7);\n        global.set('seplos_energy', e);\n    }\n}\nnode.status({ text: 'restored ' + n1 + ' points from ' + new Date(d.savedAt).toLocaleString() });\nreturn null;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 630,
+    "y": 600,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0053",
+    "type": "catch",
+    "name": "no saved file yet",
+    "scope": [
+      "f6a0b1e5c0de0051"
+    ],
+    "uncaught": false,
+    "x": 430,
+    "y": 640,
+    "wires": [
+      [
+        "f6a0b1e5c0de0054"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0054",
+    "type": "debug",
+    "name": "history file (missing on first deploy is normal)",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "error.message",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 700,
+    "y": 640,
+    "wires": []
+  },
+  {
+    "id": "f6a0b1e5c0de0055",
+    "type": "inject",
+    "name": "save every 30 min",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "1800",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 180,
+    "y": 700,
+    "wires": [
+      [
+        "f6a0b1e5c0de0056"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0056",
+    "type": "function",
+    "name": "build history snapshot",
+    "func": "// Every 30 min: the history and energy to /data/home/nodered/seplos/history.json (survives restarts)\nconst h1 = global.get('seplos_h1') || [];\nif (!h1.length) return null; // never overwrite a saved file with nothing\nmsg.payload = JSON.stringify({ v: 1, savedAt: Date.now(), h1, h7: global.get('seplos_h7') || [], energy: global.get('seplos_energy') || null });\nnode.status({ text: 'saved ' + new Date().toLocaleTimeString() + ', ' + Math.round(msg.payload.length / 1024) + ' kB' });\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 410,
+    "y": 700,
+    "wires": [
+      [
+        "f6a0b1e5c0de0057"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0057",
+    "type": "file",
+    "name": "write history.json",
+    "filename": "/data/home/nodered/seplos/history.json",
+    "filenameType": "str",
+    "appendNewline": false,
+    "createDir": true,
+    "overwriteFile": "true",
+    "encoding": "utf8",
+    "x": 640,
+    "y": 700,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0060",
+    "type": "http in",
+    "name": "GET /seplos",
+    "url": "/seplos",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 160,
+    "y": 780,
+    "wires": [
+      [
+        "f6a0b1e5c0de0061"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0061",
+    "type": "template",
+    "name": "battery page",
+    "field": "payload",
+    "fieldType": "msg",
+    "format": "html",
+    "syntax": "plain",
+    "template": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Seplos battery</title>\n<style>\n  :root {\n    color-scheme: light;\n    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;\n    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --mid: #f0efec;\n    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --up: #2a78d6; --down: #e34948;\n    --good: #0ca30c; --warn: #fab219; --crit: #d03b3b;\n  }\n  @media (prefers-color-scheme: dark) {\n    :root {\n      color-scheme: dark;\n      --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;\n      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835;\n      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --up: #3987e5; --down: #e66767;\n    }\n  }\n  * { box-sizing: border-box; }\n  body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, \"Segoe UI\", sans-serif; }\n  main { max-width: 1180px; margin: 0 auto; padding: 16px; }\n  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 12px; }\n  h1 { font-size: 20px; margin: 0; font-weight: 600; }\n  h2 { font-size: 15px; margin: 0 0 10px; font-weight: 600; }\n  h3 { font-size: 13px; margin: 0 0 6px; font-weight: 600; color: var(--ink-2); }\n  section { margin-bottom: 12px; }\n  .sub { color: var(--ink-2); } .muted { color: var(--muted); }\n  .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 14px; }\n  .status { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }\n  .status i { font-style: normal; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; font-size: 11px; color: #fff; flex: none; }\n  .status.good i { background: var(--good); } .status.warn i { background: var(--warn); color: #0b0b0b; } .status.crit i { background: var(--crit); }\n  .alerts .card { display: flex; flex-direction: column; gap: 6px; }\n  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }\n  .hero { grid-column: span 2; }\n  @media (max-width: 420px) { .hero { grid-column: span 1; } }\n  .tile .label { color: var(--ink-2); font-size: 12px; }\n  .tile .value { font-size: 22px; font-weight: 600; margin-top: 2px; }\n  .tile .note { color: var(--ink-2); font-size: 12px; margin-top: 2px; }\n  .hero .value { font-size: 48px; line-height: 1.05; }\n  .meter { height: 8px; border-radius: 4px; margin-top: 8px; overflow: hidden; }\n  .meter b { display: block; height: 100%; border-radius: 4px; }\n  .packs { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 10px; }\n  .pack-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }\n  .swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }\n  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 10px; margin: 10px 0; }\n  .facts div span { display: block; color: var(--ink-2); font-size: 12px; }\n  .facts div b { font-weight: 600; font-variant-numeric: tabular-nums; }\n  .temps { color: var(--ink-2); font-size: 12px; margin-top: 6px; } .temps b { color: var(--ink); font-weight: 600; }\n  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 14px 10px; }\n  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--ink-2); font-size: 12px; margin: -2px 0 4px; }\n  .legend span { display: inline-flex; align-items: center; gap: 5px; }\n  .seg { display: inline-flex; border: 1px solid var(--ring); border-radius: 8px; overflow: hidden; }\n  .seg button { font: inherit; border: 0; background: transparent; color: var(--ink-2); padding: 4px 12px; cursor: pointer; }\n  .seg button[aria-pressed=\"true\"] { background: var(--ink); color: var(--surface); }\n  .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }\n  svg { display: block; width: 100%; height: auto; overflow: visible; }\n  svg text { fill: var(--muted); font-size: 10px; font-family: inherit; }\n  svg .lab { fill: var(--ink-2); font-size: 11px; }\n  canvas { display: block; width: 100%; image-rendering: pixelated; }\n  .heat { position: relative; }\n  .scale { display: flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 11px; margin-top: 4px; }\n  .scale i { display: inline-block; width: 120px; height: 8px; border-radius: 4px; flex: none; }\n  .scale > span:not(.muted) { white-space: nowrap; }\n  .tip { position: fixed; pointer-events: none; z-index: 10; background: var(--surface); color: var(--ink); border: 1px solid var(--ring);\n         border-radius: 8px; padding: 6px 8px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); white-space: nowrap; }\n  .tip .k { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }\n  details { margin-top: 8px; } summary { cursor: pointer; color: var(--ink-2); }\n  table { border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; margin-top: 6px; width: 100%; }\n  th, td { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--grid); }\n  th:first-child, td:first-child { text-align: left; }\n  th { color: var(--ink-2); font-weight: 600; }\n  table.left th, table.left td { text-align: left; } td.num { white-space: nowrap; }\n  pre { white-space: pre-wrap; word-break: break-all; font-size: 11px; color: var(--ink-2); }\n  .wide { overflow-x: auto; }\n</style>\n</head>\n<body>\n<main>\n  <header><h1>Seplos battery</h1><div id=\"age\" class=\"status\"></div></header>\n  <div id=\"banner\" class=\"card\" style=\"margin-bottom:12px\" hidden></div>\n  <section id=\"alerts\" class=\"alerts\" aria-label=\"Alerts\"></section>\n  <section aria-label=\"Whole system\"><div id=\"system\" class=\"grid\"></div></section>\n  <section aria-label=\"Battery summary\"><div id=\"kpis\" class=\"grid\"></div></section>\n  <section id=\"packs\" class=\"packs\" aria-label=\"Packs\"></section>\n  <section class=\"card\" aria-label=\"Cell trends\">\n    <div class=\"row\"><h2 style=\"margin:0\">Cell trends</h2><span class=\"sub\" id=\"trendsNote\"></span></div>\n    <div id=\"heat\" class=\"packs\"></div>\n  </section>\n  <section class=\"card\" aria-label=\"History\">\n    <div class=\"row\"><h2 style=\"margin:0\">History</h2>\n      <div class=\"seg\" role=\"group\" aria-label=\"Range\"><button data-r=\"24h\">24 hours</button><button data-r=\"7d\">7 days</button></div></div>\n    <div id=\"charts\" class=\"charts\"></div>\n    <details><summary>Readings (table)</summary><div id=\"table\" class=\"wide\"></div></details>\n  </section>\n  <section id=\"settings\" class=\"card\" aria-label=\"Settings\"></section>\n  <section class=\"card\"><h2>Alert history</h2><div id=\"alertlog\"></div></section>\n  <details class=\"card\"><summary>Raw reading (JSON)</summary><pre id=\"raw\"></pre></details>\n</main>\n<div id=\"tip\" class=\"tip\" hidden></div>\n<script>\n'use strict';\nconst $ = (id) => document.getElementById(id);\nconst css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();\nconst PACK = ['--s1', '--s2', '--s3'];\nconst esc = (s) => String(s).replace(/[&<>\"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;' }[c]));\nconst fmt = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v) ? '–' : Number(v).toFixed(d));\nconst kw = (w) => (w === null || w === undefined ? '–' : Math.abs(w) >= 1000 ? (w / 1000).toFixed(2) + ' kW' : Math.round(w) + ' W');\nconst kwh = (wh) => (wh === null || wh === undefined ? '–' : (wh / 1000).toFixed(1) + ' kWh');\nconst hhmm = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });\nconst dayLabel = (t) => new Date(t).toLocaleDateString([], { weekday: 'short', day: 'numeric' });\nconst dur = (h) => (h === null || h === undefined ? null : h >= 48 ? Math.round(h / 24) + ' days' : Math.floor(h) + ' h ' + String(Math.round((h % 1) * 60)).padStart(2, '0') + ' min');\nconst NS = 'http://www.w3.org/2000/svg';\nconst el = (tag, attrs = {}, parent) => { const n = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); if (parent) parent.appendChild(n); return n; };\nconst status = (cls, icon, text) => `<span class=\"status ${cls}\"><i aria-hidden=\"true\">${icon}</i>${esc(text)}</span>`;\nconst store = { get(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } } };\n\n// ---- tooltip ----\nconst tip = $('tip');\nfunction showTip(html, x, y) {\n  tip.innerHTML = html; tip.hidden = false;\n  const r = tip.getBoundingClientRect();\n  let left = x + 14, top = y + 14;\n  if (left + r.width > innerWidth - 8) left = x - r.width - 14;\n  if (top + r.height > innerHeight - 8) top = y - r.height - 14;\n  tip.style.left = Math.max(8, left) + 'px'; tip.style.top = Math.max(8, top) + 'px';\n}\nconst hideTip = () => { tip.hidden = true; };\nfunction niceStep(span, target = 4) {\n  const raw = span / target, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;\n  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;\n}\nconst mix = (a, b, f) => { // two #rrggbb colours, f 0..1\n  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16)), pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));\n  return 'rgb(' + pa.map((v, i) => Math.round(v + (pb[i] - v) * f)).join(',') + ')';\n};\n// Charts size themselves to their box, so they are drawn only once every card of the section is on the\n// page: in a grid, the first card spans the whole row until its neighbours arrive.\nlet pending = [];\nconst later = (draw) => { pending.push(draw); };\nconst drawPending = () => { const list = pending; pending = []; list.forEach((draw) => draw()); };\n// Rebuilding a section closes its open tables; keep them open.\nfunction keepOpen(box, build) {\n  const was = [...box.querySelectorAll('details')].map((d) => d.open);\n  build();\n  box.querySelectorAll('details').forEach((d, i) => { if (was[i]) d.open = true; });\n}\n// Time labels for a chart from t0 to t1: days for spans over 2 days, otherwise round local times.\nfunction timeTicks(t0, t1) {\n  const span = t1 - t0, out = [];\n  if (span > 2 * 86400e3) {\n    const d = new Date(t0); d.setHours(24, 0, 0, 0);\n    for (let t = d.getTime(); t <= t1; t += 86400e3) out.push({ t, label: dayLabel(t) });\n    return out;\n  }\n  const every = span > 12 * 3600e3 ? 360 : span > 4 * 3600e3 ? 120 : span > 90 * 60e3 ? 60 : span > 30 * 60e3 ? 15 : 5; // minutes\n  const f = new Date(t0); f.setMinutes(Math.ceil(f.getMinutes() / 5) * 5, 0, 0);\n  for (let t = f.getTime(); t <= t1; t += 5 * 60e3) { const d = new Date(t); if (!((d.getHours() * 60 + d.getMinutes()) % every)) out.push({ t, label: hhmm(t) }); }\n  return out;\n}\n\n// ---- cells now: difference from the pack average, with balancing marks ----\nfunction cellChart(box, pack) {\n  const cells = pack.cells.map((v, i) => ({ no: i + 1, v })).filter((c) => c.v !== null);\n  if (!cells.length) { box.textContent = 'No cell data.'; return; }\n  const avg = cells.reduce((a, c) => a + c.v, 0) / cells.length;\n  cells.forEach((c) => { c.dev = Math.round((c.v - avg) * 1000); });\n  const bal = new Set(pack.balancing ? pack.balancing.cells : []);\n  const W = Math.max(300, box.clientWidth || 330), H = 160, L = 34, R = 8, T = 16, B = 30;\n  const maxAbs = Math.max(5, ...cells.map((c) => Math.abs(c.dev)));\n  const step = niceStep(maxAbs * 2, 4), lim = Math.ceil(maxAbs / step) * step;\n  const y = (d) => T + (H - T - B) * (lim - d) / (2 * lim);\n  const slot = (W - L - R) / 16, bw = Math.min(24, slot - 2);\n  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Pack ${pack.pack} cells: lowest ${pack.cellMinNo}, highest ${pack.cellMaxNo}, gap ${pack.deltaMv} mV` });\n  for (let d = -lim; d <= lim + 1e-9; d += step) {\n    el('line', { x1: L, x2: W - R, y1: y(d), y2: y(d), stroke: d === 0 ? css('--axis') : css('--grid'), 'stroke-width': 1 }, svg);\n    el('text', { x: L - 4, y: y(d) + 3, 'text-anchor': 'end' }, svg).textContent = (d > 0 ? '+' : '') + d;\n  }\n  el('text', { x: W - R, y: T - 5, 'text-anchor': 'end', class: 'lab' }, svg).textContent = `average ${avg.toFixed(3)} V`;\n  for (const c of cells) {\n    const cx = L + slot * (c.no - 0.5), x0 = cx - bw / 2, y0 = y(0), y1 = y(c.dev), up = c.dev >= 0, h = Math.abs(y1 - y0);\n    if (h >= 0.5) {\n      const r = Math.min(4, h, bw / 2);\n      const d = up ? `M${x0},${y0} V${y1 + r} Q${x0},${y1} ${x0 + r},${y1} H${x0 + bw - r} Q${x0 + bw},${y1} ${x0 + bw},${y1 + r} V${y0} Z`\n        : `M${x0},${y0} V${y1 - r} Q${x0},${y1} ${x0 + r},${y1} H${x0 + bw - r} Q${x0 + bw},${y1} ${x0 + bw},${y1 - r} V${y0} Z`;\n      el('path', { d, fill: up ? css('--up') : css('--down') }, svg);\n    } else el('line', { x1: x0, x2: x0 + bw, y1: y0, y2: y0, stroke: css('--ink-2'), 'stroke-width': 2, 'stroke-linecap': 'round' }, svg);\n    el('text', { x: cx, y: H - 16, 'text-anchor': 'middle' }, svg).textContent = c.no;\n    if (bal.has(c.no)) el('circle', { cx, cy: H - 6, r: 3, fill: css('--ink-2') }, svg);\n    if (c.no === pack.cellMaxNo || c.no === pack.cellMinNo) el('text', { x: cx, y: up ? y1 - 4 : y1 + 12, 'text-anchor': 'middle', class: 'lab' }, svg).textContent = c.v.toFixed(3);\n    const hit = el('rect', { x: cx - slot / 2, y: T, width: slot, height: H - T, fill: 'transparent' }, svg);\n    const html = `<b>Pack ${pack.pack}, cell ${c.no}</b><br>${c.v.toFixed(3)} V · ${(c.dev > 0 ? '+' : '') + c.dev} mV vs average`\n      + (c.no === pack.cellMaxNo ? '<br>highest in this pack' : c.no === pack.cellMinNo ? '<br>lowest in this pack' : '') + (bal.has(c.no) ? '<br>balancing now' : '');\n    hit.addEventListener('pointermove', (e) => showTip(html, e.clientX, e.clientY));\n    hit.addEventListener('pointerleave', hideTip);\n  }\n  box.replaceChildren(svg);\n  if (pack.balancing) {\n    const n = document.createElement('div'); n.className = 'temps';\n    n.innerHTML = bal.size ? `<span class=\"swatch\" style=\"background:${css('--ink-2')}\"></span>balancing now: cell ${[...bal].join(', ')} <span class=\"muted\">(bit map from the GX driver, not yet confirmed)</span>`\n      : '<span class=\"muted\">no cell balancing now (bit map from the GX driver, not yet confirmed)</span>';\n    box.appendChild(n);\n  }\n}\n\n// ---- line chart: one measure, one or more series, crosshair + tooltip ----\nfunction lineChart(box, { title, unit, digits, times, series, zero, gapMs }) {\n  const card = document.createElement('div');\n  card.innerHTML = `<h3>${esc(title)}</h3>`;\n  if (series.length > 1) {\n    const lg = document.createElement('div'); lg.className = 'legend';\n    lg.innerHTML = series.map((s) => `<span><i class=\"swatch\" style=\"background:${s.color}\"></i>${esc(s.name)}</span>`).join('');\n    card.appendChild(lg);\n  }\n  box.appendChild(card);\n  const pts = series.map((s) => s.values.map((v, i) => ({ t: times[i], v })).filter((p) => p.v !== null && p.v !== undefined));\n  const all = pts.flat();\n  if (all.length < 2) { const p = document.createElement('p'); p.className = 'muted'; p.textContent = 'Collecting…'; card.appendChild(p); return; }\n  later(() => {\n  const W = Math.max(300, card.clientWidth || 330), H = 150, L = 42, R = series.length > 1 ? 64 : 14, T = 8, B = 20;\n  const t0 = Math.min(...times), t1 = Math.max(...times, t0 + 60000);\n  let lo = Math.min(...all.map((p) => p.v)), hi = Math.max(...all.map((p) => p.v));\n  if (zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }\n  if (hi - lo < 1e-9) { lo -= 1; hi += 1; }\n  const step = niceStep(hi - lo, 3); lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;\n  const x = (t) => L + (W - L - R) * (t - t0) / (t1 - t0), y = (v) => T + (H - T - B) * (hi - v) / (hi - lo);\n  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': title });\n  const dec = step < 1 ? (step < 0.1 ? 2 : 1) : 0;\n  for (let v = lo; v <= hi + step / 1e6; v += step) {\n    el('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: zero && Math.abs(v) < step / 1e6 ? css('--axis') : css('--grid'), 'stroke-width': 1 }, svg);\n    el('text', { x: L - 4, y: y(v) + 3, 'text-anchor': 'end' }, svg).textContent = Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(dec);\n  }\n  const span = t1 - t0;\n  for (const tk of timeTicks(t0, t1)) if (x(tk.t) > L + 12 && x(tk.t) < W - R - 12) el('text', { x: x(tk.t), y: H - 5, 'text-anchor': 'middle' }, svg).textContent = tk.label;\n  const ends = pts.map((p) => p[p.length - 1]).filter(Boolean).map((q) => y(q.v)).sort((a, b) => a - b);\n  const labelsFit = series.length > 1 && ends.every((v, i) => i === 0 || v - ends[i - 1] >= 13);\n  const gap = gapMs || 5 * 60e3;\n  series.forEach((s, k) => {\n    const p = pts[k]; let d = '';\n    p.forEach((q, i) => { d += (i && q.t - p[i - 1].t < gap ? 'L' : 'M') + x(q.t).toFixed(1) + ',' + y(q.v).toFixed(1); });\n    el('path', { d, fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);\n    const last = p[p.length - 1];\n    if (last) {\n      el('circle', { cx: x(last.t), cy: y(last.v), r: 4, fill: s.color, stroke: css('--surface'), 'stroke-width': 2 }, svg);\n      if (labelsFit) el('text', { x: x(last.t) + 8, y: y(last.v) + 4, class: 'lab' }, svg).textContent = `${s.name} ${fmt(last.v, digits)}`;\n    }\n  });\n  const cross = el('line', { y1: T, y2: H - B, stroke: css('--axis'), 'stroke-width': 1, visibility: 'hidden' }, svg);\n  const dots = series.map((s) => el('circle', { r: 4, fill: s.color, stroke: css('--surface'), 'stroke-width': 2, visibility: 'hidden' }, svg));\n  const hit = el('rect', { x: L, y: T, width: W - L - R, height: H - T - B, fill: 'transparent' }, svg);\n  hit.addEventListener('pointermove', (e) => {\n    const r = svg.getBoundingClientRect(), t = t0 + ((e.clientX - r.left) * W / r.width - L) / (W - L - R) * (t1 - t0);\n    let i = 0, best = Infinity;\n    times.forEach((tt, j) => { const dd = Math.abs(tt - t); if (dd < best) { best = dd; i = j; } });\n    cross.setAttribute('x1', x(times[i])); cross.setAttribute('x2', x(times[i])); cross.setAttribute('visibility', 'visible');\n    let html = `<b>${span > 2 * 86400e3 ? dayLabel(times[i]) + ' ' : ''}${hhmm(times[i])}</b>`;\n    series.forEach((s, k) => {\n      const v = s.values[i];\n      if (v === null || v === undefined) { dots[k].setAttribute('visibility', 'hidden'); return; }\n      dots[k].setAttribute('cx', x(times[i])); dots[k].setAttribute('cy', y(v)); dots[k].setAttribute('visibility', 'visible');\n      html += `<br><span class=\"k\" style=\"background:${s.color}\"></span>${esc(s.name || title)} ${fmt(v, digits)} ${esc(unit)}`;\n    });\n    showTip(html, e.clientX, e.clientY);\n  });\n  hit.addEventListener('pointerleave', () => { hideTip(); cross.setAttribute('visibility', 'hidden'); dots.forEach((d) => d.setAttribute('visibility', 'hidden')); });\n  card.appendChild(svg);\n  });\n}\n\n// ---- energy per day: battery charged (up) and discharged (down) ----\nfunction energyChart(box, days) {\n  const card = document.createElement('div');\n  card.innerHTML = `<h3>Battery energy per day (kWh)</h3><div class=\"legend\"><span><i class=\"swatch\" style=\"background:${css('--up')}\"></i>charged</span><span><i class=\"swatch\" style=\"background:${css('--down')}\"></i>discharged</span></div>`;\n  box.appendChild(card);\n  if (!days.length) { card.insertAdjacentHTML('beforeend', '<p class=\"muted\">Collecting…</p>'); return; }\n  later(() => {\n  const W = Math.max(300, card.clientWidth || 330), H = 150, L = 34, R = 8, T = 8, B = 20;\n  const vin = days.map((d) => (d.battIn || 0) / 1000), vout = days.map((d) => (d.battOut || 0) / 1000);\n  const m = Math.max(1, ...vin, ...vout), step = niceStep(m * 2, 4), lim = Math.ceil(m / step) * step;\n  const y = (v) => T + (H - T - B) * (lim - v) / (2 * lim);\n  const slot = (W - L - R) / days.length, bw = Math.min(24, slot - 6);\n  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Battery energy per day' });\n  for (let v = -lim; v <= lim + 1e-9; v += step) {\n    el('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: Math.abs(v) < 1e-9 ? css('--axis') : css('--grid'), 'stroke-width': 1 }, svg);\n    el('text', { x: L - 4, y: y(v) + 3, 'text-anchor': 'end' }, svg).textContent = Math.abs(v).toFixed(step < 1 ? 1 : 0);\n  }\n  days.forEach((d, i) => {\n    const cx = L + slot * (i + 0.5), x0 = cx - bw / 2, y0 = y(0);\n    for (const [val, up, col] of [[vin[i], true, css('--up')], [vout[i], false, css('--down')]]) {\n      const y1 = y(up ? val : -val), h = Math.abs(y1 - y0);\n      if (h < 0.5) continue;\n      const r = Math.min(4, h, bw / 2);\n      el('path', { d: up ? `M${x0},${y0} V${y1 + r} Q${x0},${y1} ${x0 + r},${y1} H${x0 + bw - r} Q${x0 + bw},${y1} ${x0 + bw},${y1 + r} V${y0} Z`\n        : `M${x0},${y0} V${y1 - r} Q${x0},${y1} ${x0 + r},${y1} H${x0 + bw - r} Q${x0 + bw},${y1} ${x0 + bw},${y1 - r} V${y0} Z`, fill: col }, svg);\n    }\n    el('text', { x: cx, y: H - 5, 'text-anchor': 'middle' }, svg).textContent = d.today ? 'today' : d.label;\n    const hit = el('rect', { x: cx - slot / 2, y: T, width: slot, height: H - T - B, fill: 'transparent' }, svg);\n    const html = `<b>${d.today ? 'Today so far' : esc(d.label)}</b><br>charged ${kwh(d.battIn)} · discharged ${kwh(d.battOut)}<br>solar ${kwh(d.pv)} · loads ${kwh(d.load)}<br>grid in ${kwh(d.gridIn)} · out ${kwh(d.gridOut)}`;\n    hit.addEventListener('pointermove', (e) => showTip(html, e.clientX, e.clientY));\n    hit.addEventListener('pointerleave', hideTip);\n  });\n  card.appendChild(svg);\n  card.insertAdjacentHTML('beforeend', `<details><summary>Per day (table)</summary><table><tr><th>Day</th><th>Charged</th><th>Discharged</th><th>Solar</th><th>Loads</th><th>Grid in</th><th>Grid out</th></tr>${\n    days.map((d) => `<tr><td>${d.today ? 'today' : esc(d.label)}</td><td>${kwh(d.battIn)}</td><td>${kwh(d.battOut)}</td><td>${kwh(d.pv)}</td><td>${kwh(d.load)}</td><td>${kwh(d.gridIn)}</td><td>${kwh(d.gridOut)}</td></tr>`).join('')}</table></details>`);\n  });\n}\n\n// ---- cell trends: every cell over time, colour = difference from the pack average then ----\n// Each column runs from its reading to the next one; a pause longer than gapMs stays blank, and so does a\n// reading this pack did not answer.\nfunction heatmap(box, packNo, points, color, gapMs, stepMs) {\n  const card = document.createElement('div');\n  card.innerHTML = `<div class=\"pack-head\"><span class=\"swatch\" style=\"background:${color}\"></span><h3 style=\"margin:0\">Pack ${packNo}</h3></div>`;\n  box.appendChild(card);\n  const k = packNo - 1;\n  const has = (p) => !!(p.cells && p.cells[k]);\n  const cols = points.filter(has);\n  if (cols.length < 2) { card.insertAdjacentHTML('beforeend', '<p class=\"muted\">Collecting…</p>'); return null; }\n  // each cell's low and high over the range (the cell table uses these)\n  const lo = Array(16).fill(null), hi = Array(16).fill(null);\n  cols.forEach((p) => p.cells[k].forEach((mv, c) => { if (mv === null) return; lo[c] = lo[c] === null ? mv : Math.min(lo[c], mv); hi[c] = hi[c] === null ? mv : Math.max(hi[c], mv); }));\n  const missed = points.length - cols.length;\n  later(() => {\n    const devs = new Map(cols.map((p) => {\n      const v = p.cells[k].filter((c) => c !== null), a = v.reduce((s, c) => s + c, 0) / v.length;\n      return [p, p.cells[k].map((c) => (c === null ? null : c - a))];\n    }));\n    const absAll = [...devs.values()].flat().filter((d) => d !== null).map(Math.abs).sort((a, b) => a - b);\n    const dmax = Math.max(10, Math.ceil((absAll[Math.floor(absAll.length * 0.98)] || 10) / 5) * 5);\n    const W = Math.max(300, card.clientWidth || 330), L = 26, rowH = 9, H = 16 * rowH;\n    const cv = document.createElement('canvas');\n    const dpr = window.devicePixelRatio || 1;\n    cv.width = Math.round(W * dpr); cv.height = Math.round((H + 18) * dpr); cv.style.height = (H + 18) + 'px';\n    const g = cv.getContext('2d'); g.scale(dpr, dpr);\n    const mid = css('--mid'), up = css('--up'), down = css('--down');\n    const t0 = points[0].t, t1 = points[points.length - 1].t + stepMs;\n    const x = (t) => L + (W - L) * (t - t0) / (t1 - t0);\n    const end = (i) => (i + 1 < points.length && points[i + 1].t - points[i].t <= gapMs ? points[i + 1].t : points[i].t + stepMs);\n    points.forEach((p, i) => {\n      if (!has(p)) return;\n      const x0 = x(p.t), w = x(end(i)) - x0 + 0.5; // the half pixel hides seams between columns\n      devs.get(p).forEach((d, c) => {\n        if (d === null) return;\n        g.fillStyle = mix(mid, d >= 0 ? up : down, Math.min(1, Math.abs(d) / dmax));\n        g.fillRect(x0, c * rowH, w, rowH - 1);\n      });\n    });\n    g.fillStyle = css('--muted'); g.font = '10px system-ui, sans-serif'; g.textAlign = 'right';\n    for (let c = 0; c < 16; c += 3) g.fillText(String(c + 1), L - 4, c * rowH + rowH - 1);\n    g.fillText('16', L - 4, 15 * rowH + rowH - 1);\n    g.textAlign = 'center';\n    for (const tk of timeTicks(t0, t1)) if (x(tk.t) > L + 14 && x(tk.t) < W - 14) g.fillText(tk.label, x(tk.t), H + 13);\n    const wrap = document.createElement('div'); wrap.className = 'heat'; wrap.appendChild(cv);\n    wrap.setAttribute('role', 'img'); wrap.setAttribute('aria-label', `Pack ${packNo}: each cell over time, coloured by its difference from the pack average`);\n    const week = t1 - t0 > 2 * 86400e3;\n    cv.addEventListener('pointermove', (e) => {\n      const r = cv.getBoundingClientRect(), px = (e.clientX - r.left) * W / r.width, py = e.clientY - r.top;\n      const c = Math.floor(py / rowH); if (c < 0 || c > 15 || px < L) { hideTip(); return; }\n      const t = t0 + (px - L) / (W - L) * (t1 - t0);\n      let i = -1; for (let j = 0; j < points.length && points[j].t <= t; j++) i = j;\n      if (i < 0 || t >= end(i)) { hideTip(); return; }\n      const p = points[i], when = (week ? dayLabel(p.t) + ' ' : '') + hhmm(p.t);\n      if (!has(p)) { showTip(`<b>Pack ${packNo}</b> · ${when}<br>no answer from this pack`, e.clientX, e.clientY); return; }\n      const mv = p.cells[k][c], d = devs.get(p)[c], b = p.bal && p.bal[k] && p.bal[k].includes(c + 1);\n      showTip(`<b>Pack ${packNo}, cell ${c + 1}</b> · ${when}<br>${mv === null ? '–' : (mv / 1000).toFixed(3) + ' V'} · ${d === null ? '' : (d > 0 ? '+' : '') + Math.round(d) + ' mV vs average'}${b ? '<br>balancing' : ''}`, e.clientX, e.clientY);\n    });\n    cv.addEventListener('pointerleave', hideTip);\n    card.appendChild(wrap);\n    card.insertAdjacentHTML('beforeend', `<div class=\"scale\"><span>−${dmax} mV</span><i style=\"background:linear-gradient(90deg, ${down}, ${mid}, ${up})\"></i><span>+${dmax} mV</span><span class=\"muted\">difference from the pack average at that moment; rows are cells 1–16</span></div>`\n      + (missed ? `<p class=\"muted\" style=\"margin:4px 0 0\">Missing from ${missed} of ${points.length} readings (the pack did not answer); those columns are blank.</p>` : ''));\n  });\n  return { lo, hi };\n}\n\n// ---- settings (read-only) ----\nconst SOURCE = { tested: 'checked', driver: 'GX driver', pattern: 'inferred' };\nfunction renderSettings(st, changes) {\n  const box = $('settings');\n  if (!st) { box.innerHTML = '<h2>Settings</h2><p class=\"muted\">Not read yet: the first settings read runs 40 s after deploy.</p>'; return; }\n  const cols = [{ name: 'System', s: st.system }].concat((st.packs || []).map((p) => ({ name: `Pack ${p.pack}`, s: p.settings })));\n  const ok = cols.filter((c) => c.s && !c.s.error);\n  const info = (st.packs || []).map((p) => (p.info && !p.info.error\n    ? `<div><b>Pack ${p.pack}</b> <span class=\"sub\">${esc(p.info.model || '–')} · firmware ${esc(p.info.firmware || '–')} · serial ${esc(p.info.serial || '–')}</span></div>`\n    : `<div><b>Pack ${p.pack}</b> <span class=\"muted\">model and serial not read</span></div>`)).join('');\n  const failed = cols.filter((c) => !c.s || c.s.error).map((c) => `${c.name}: ${esc((c.s && c.s.error) || 'not read')}`);\n  const labels = [];\n  for (const c of ok) for (const n of c.s.named) if (!labels.find((l) => l.register === n.register)) labels.push(n);\n  const rows = labels.map((l) => {\n    const vals = ok.map((c) => c.s.named.find((x) => x.register === l.register) || null);\n    const differ = new Set(vals.map((v) => (v ? v.raw : null))).size > 1;\n    return `<tr><td>${esc(l.label)} <span class=\"muted\">· ${SOURCE[l.source] || esc(l.source)}</span></td>${vals.map((v) => `<td class=\"num\"${differ ? ' style=\"font-weight:600\"' : ''}>${v ? (v.value === null ? '–' : esc(v.value)) + (v.unit ? ' ' + esc(v.unit) : '') : '–'}</td>`).join('')}</tr>`;\n  }).join('');\n  const regs = [];\n  for (const c of ok) for (const o of c.s.other) if (!regs.includes(o.register)) regs.push(o.register);\n  const otherRows = regs.map((r) => `<tr><td>${r}</td>${ok.map((c) => { const o = c.s.other.find((x) => x.register === r); return `<td>${o ? o.raw : '–'}</td>`; }).join('')}</tr>`).join('');\n  const recent = (changes || []).slice(-10).reverse();\n  box.innerHTML = `<h2>Settings <span class=\"sub\" style=\"font-weight:400\">read ${hhmm(Date.parse(st.timestamp))} · read-only</span></h2>${info}\n    ${failed.length ? `<p>${status('warn', '!', 'Not all settings answered')} <span class=\"sub\">${failed.join(' · ')}</span></p>` : ''}\n    <p class=\"sub\" style=\"margin:8px 0\">Change settings with the Seplos app or BMS Studio; this page shows them, and what changed. <i>checked</i> = matches a tested reference;\n      <i>GX driver</i> = from dbus-serialbattery; <i>inferred</i> = from the register layout. Bold = the packs differ.</p>\n    <p><b>Changes</b> ${recent.length ? '' : '<span class=\"muted\">none since this page started collecting</span>'}</p>\n    ${recent.length ? `<div class=\"wide\"><table class=\"left\"><tr><th>When</th><th>Where</th><th>Setting</th><th>Was</th><th>Now</th></tr>${recent.map((c) => `<tr><td class=\"num\">${hhmm(Date.parse(c.ts))}</td><td class=\"num\">${esc(c.where)}</td><td>${esc(c.label)}</td><td class=\"num\">${esc(c.from)} ${esc(c.unit)}</td><td class=\"num\">${esc(c.to)} ${esc(c.unit)}</td></tr>`).join('')}</table></div>` : ''}\n    <div class=\"wide\"><table><tr><th>Setting</th>${ok.map((c) => `<th>${c.name}</th>`).join('')}</tr>${rows}</table></div>\n    <details><summary>Other registers, meaning not known (${regs.length})</summary><div class=\"wide\"><table><tr><th>Register</th>${ok.map((c) => `<th>${c.name}</th>`).join('')}</tr>${otherRows}</table></div></details>`;\n}\n\nconst tile = (label, value, note, cls = '') => `<div class=\"card tile ${cls}\"><div class=\"label\">${esc(label)}</div><div class=\"value\">${value}</div>${note ? `<div class=\"note\">${note}</div>` : ''}</div>`;\n\n// ---- live part (every 15 s) ----\nlet lastNow = null, lastHist = null, cellRange = null;\nfunction renderNow(data) {\n  lastNow = data;\n  const r = data.now, now = data.serverTime || Date.now();\n  const al = data.alerts || { active: [], log: [] };\n  $('alerts').innerHTML = al.active.length ? `<div class=\"card\">${al.active.map((a) => status(a.level === 'crit' ? 'crit' : 'warn', a.level === 'crit' ? '✕' : '!', a.text) + ` <span class=\"muted\">since ${hhmm(a.since)}</span>`).join('<br>')}</div>` : '';\n  $('alertlog').innerHTML = al.log.length ? `<div class=\"wide\"><table class=\"left\"><tr><th>When</th><th>Alert</th><th></th></tr>${al.log.slice().reverse().map((x) => `<tr><td class=\"num\">${new Date(x.t).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</td><td>${esc(x.text)}</td><td>${x.state === 'raised' ? status(x.level === 'crit' ? 'crit' : 'warn', x.level === 'crit' ? '✕' : '!', 'raised') : status('good', '✓', 'cleared')}</td></tr>`).join('')}</table></div>` : '<p class=\"muted\">No alerts so far.</p>';\n  if (!r) { $('age').innerHTML = status('warn', '!', 'No reading yet'); return; }\n  const ageS = Math.max(0, Math.round((now - Date.parse(r.timestamp)) / 1000));\n  const ageTxt = ageS < 90 ? `${ageS} s ago` : `${Math.round(ageS / 60)} min ago`;\n  $('age').innerHTML = ageS < 180 ? status('good', '✓', `Live · read ${ageTxt}`) : ageS < 600 ? status('warn', '!', `Last read ${ageTxt}`) : status('crit', '✕', `No new reading for ${Math.round(ageS / 60)} min`);\n  const err = data.error, b = $('banner');\n  if (err && Date.parse(err.ts) > Date.parse(r.timestamp)) { b.hidden = false; b.innerHTML = status('crit', '✕', 'The last read failed') + ` <span class=\"sub\">${esc(err.message)}</span>`; } else b.hidden = true;\n\n  const s = r.system, sum = r.summary || {}, packs = (r.packs || []).filter((p) => !p.error);\n  const power = Math.round(s.voltage * s.current), e = data.energy || { today: {} }, td = e.today || {}, sys = data.sys, tt = data.timeTo || {};\n  const flow = (w, pos, neg) => (w === null || w === undefined ? '' : Math.abs(w) < 20 ? 'idle' : w > 0 ? pos : neg);\n  $('system').innerHTML = [\n    tile('Solar', kw(sys ? sys.pv : null), `today ${kwh(td.pv)}`),\n    tile('Loads', kw(sys ? sys.load : null), `today ${kwh(td.load)}`),\n    tile('Grid', kw(sys && sys.grid !== null ? Math.abs(sys.grid) : null), `${flow(sys ? sys.grid : null, 'importing', 'exporting')} · today in ${kwh(td.gridIn)}, out ${kwh(td.gridOut)}`),\n    tile('Battery', kw(Math.abs(power)), `${flow(power, 'charging', 'discharging')} · today in ${kwh(td.battIn)}, out ${kwh(td.battOut)}`)\n  ].join('') + (sys ? '' : '<p class=\"muted\" style=\"grid-column:1/-1;margin:0\">Solar, loads and grid: no values from the GX yet (the Victron nodes in the flow).</p>');\n  const toTxt = tt.hoursToEmpty !== null && tt.hoursToEmpty !== undefined ? ['Time to empty', dur(tt.hoursToEmpty)] : tt.hoursToFull !== null && tt.hoursToFull !== undefined ? ['Time to full', dur(tt.hoursToFull)] : ['Time to full / empty', 'idle'];\n  const temps = packs.flatMap((p) => p.cellTemps).filter((t) => t !== null);\n  const capSum = packs.reduce((a, p) => a + (p.capacityAh || 0), 0);\n  $('kpis').innerHTML = [\n    `<div class=\"card tile hero\"><div class=\"label\">State of charge</div><div class=\"value\">${fmt(s.soc)} %</div>\n      <div class=\"meter\" style=\"background:color-mix(in srgb, ${css('--s1')} 18%, var(--surface))\" role=\"meter\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"${s.soc}\" aria-label=\"State of charge\"><b style=\"width:${Math.min(100, Math.max(0, s.soc))}%;background:${css('--s1')}\"></b></div>\n      <div class=\"note\">${fmt(s.remainingAh)} Ah left of ${capSum || s.capacityAh} Ah${capSum && capSum !== s.capacityAh ? ` (BMS says ${s.capacityAh})` : ''}</div></div>`,\n    tile(toTxt[0], toTxt[1], tt.iAvg !== undefined ? `at ${fmt(Math.abs(tt.iAvg))} A (5-min average)` : ''),\n    tile('Voltage', `${fmt(s.voltage, 2)} V`, `${packs.length} of ${s.packCount} packs read`),\n    tile('Current', `${fmt(s.current)} A`, `${flow(power, 'charging', 'discharging') || 'idle'} · ${power} W`),\n    tile('Health', `${fmt(s.soh)} %`, `${s.cycles} cycles (system)`),\n    tile('Cell gap', `${sum.deltaMv ?? '–'} mV`, `worst pack ${sum.worstPackDeltaMv ?? '–'} mV`),\n    tile('Lowest cell', `${fmt(sum.cellMin, 3)} V`, `${esc(sum.cellMinAt || '')} (P = pack, C = cell)`),\n    tile('Highest cell', `${fmt(sum.cellMax, 3)} V`, esc(sum.cellMaxAt || '')),\n    tile('Cell temperature', temps.length ? `${fmt(Math.min(...temps))}–${fmt(Math.max(...temps))} °C` : '–', 'lowest to highest, all packs'),\n    tile('Switches', '', (s.chargeFet ? status('good', '✓', 'Charge allowed') : status('crit', '✕', 'Charge blocked')) + '<br>' + (s.dischargeFet ? status('good', '✓', 'Discharge allowed') : status('crit', '✕', 'Discharge blocked')) + (s.heater ? '<br>' + status('warn', '!', 'Heater on') : '')),\n    tile('BMS alarms', s.problem ? status('crit', '✕', 'Alarm') : status('good', '✓', 'None'), s.problem ? `code ${esc(s.problemCode)}` : 'from the BMS status bits')\n  ].join('');\n\n  const packBox = $('packs'); const packOpen = [...packBox.querySelectorAll('details')].map((d) => d.open); packBox.replaceChildren();\n  (r.packs || []).forEach((p, k) => {\n    const card = document.createElement('div'); card.className = 'card';\n    const color = css(PACK[k % PACK.length]);\n    if (p.error) { card.innerHTML = `<div class=\"pack-head\"><span class=\"swatch\" style=\"background:${color}\"></span><h2 style=\"margin:0\">Pack ${p.pack}</h2></div>${status('crit', '✕', 'Not read')} <span class=\"sub\">${esc(p.error)}</span>`; packBox.appendChild(card); return; }\n    const rng = cellRange && cellRange[k];\n    const v = p.cells.filter((c) => c !== null), avg = v.reduce((a, c) => a + c, 0) / v.length;\n    card.innerHTML = `<div class=\"pack-head\"><span class=\"swatch\" style=\"background:${color}\"></span><h2 style=\"margin:0\">Pack ${p.pack}</h2><span class=\"sub\">${fmt(p.soc)} % · ${fmt(p.remainingAh)} of ${p.capacityAh} Ah</span></div>\n      <div class=\"meter\" style=\"background:color-mix(in srgb, ${color} 18%, var(--surface))\"><b style=\"width:${Math.min(100, Math.max(0, p.soc))}%;background:${color}\"></b></div>\n      <div class=\"facts\"><div><span>Voltage</span><b>${fmt(p.voltage, 2)} V</b></div><div><span>Current</span><b>${fmt(p.current, 2)} A</b></div><div><span>Health</span><b>${fmt(p.soh)} %</b></div>\n        <div><span>Cycles</span><b>${p.cycles}</b></div><div><span>Cell gap</span><b>${p.deltaMv} mV</b></div><div><span>Low / high cell</span><b>C${p.cellMinNo} / C${p.cellMaxNo}</b></div></div>\n      <h3>Cells now: difference from the pack average (mV)</h3><div class=\"cells\"></div>\n      <div class=\"temps\">Cell temperatures ${p.cellTemps.map((t) => `<b>${fmt(t)}</b>`).join(' · ')} °C · ambient <b>${fmt(p.ambient)}</b> · MOSFET <b>${fmt(p.mosfet)}</b> °C</div>\n      <details><summary>Cell table${rng ? ' (with low and high over the history range)' : ''}</summary><table><tr><th>Cell</th><th>Now (V)</th><th>vs average (mV)</th>${rng ? '<th>Low (V)</th><th>High (V)</th>' : ''}</tr>${\n        p.cells.map((c, i) => `<tr><td>${i + 1}${i + 1 === p.cellMaxNo ? ' (high)' : i + 1 === p.cellMinNo ? ' (low)' : ''}</td><td>${fmt(c, 3)}</td><td>${c === null ? '–' : Math.round((c - avg) * 1000)}</td>${\n          rng ? `<td>${rng.lo[i] === null ? '–' : (rng.lo[i] / 1000).toFixed(3)}</td><td>${rng.hi[i] === null ? '–' : (rng.hi[i] / 1000).toFixed(3)}</td>` : ''}</tr>`).join('')}</table></details>`;\n    packBox.appendChild(card);\n    later(() => cellChart(card.querySelector('.cells'), p));\n  });\n  packBox.querySelectorAll('details').forEach((d, i) => { if (packOpen[i]) d.open = true; });\n  drawPending();\n  keepOpen($('settings'), () => renderSettings(data.settings, data.settingsChanges));\n  $('raw').textContent = JSON.stringify(r, null, 2);\n}\n\n// ---- history part (every 60 s, or on range change) ----\nlet range = store.get('seplos-range', '24h');\nfunction renderHistory(hist) {\n  lastHist = hist;\n  const pts = (hist.points || []).slice().sort((a, b) => a.t - b.t);\n  const times = pts.map((p) => p.t), week = hist.range === '7d', gapMs = week ? 45 * 60e3 : 5 * 60e3, stepMs = week ? 10 * 60e3 : 60e3; // a longer pause = missing data\n  const nPacks = Math.max(0, ...pts.map((p) => (p.ps || []).length));\n  const per = (key) => Array.from({ length: nPacks }, (_, k) => ({ name: `Pack ${k + 1}`, color: css(PACK[k % PACK.length]), values: pts.map((p) => (p[key] || [])[k] ?? null) }));\n  const one = (key, name = '') => [{ name, color: css('--s1'), values: pts.map((p) => p[key] ?? null) }];\n  const charts = $('charts'); const chartsOpen = [...charts.querySelectorAll('details')].map((d) => d.open); charts.replaceChildren();\n  lineChart(charts, { title: 'State of charge per pack (%)', unit: '%', digits: 1, times, series: per('ps'), gapMs });\n  lineChart(charts, { title: (week ? 'Largest cell gap per 10 min' : 'Cell gap') + ' per pack (mV)', unit: 'mV', digits: 0, times, series: per('pd'), gapMs });\n  lineChart(charts, { title: 'Battery power (W), + is charging', unit: 'W', digits: 0, times, series: one('p'), zero: true, gapMs });\n  lineChart(charts, { title: 'Solar, loads and grid (W)', unit: 'W', digits: 0, times, gapMs, zero: true, series: [\n    { name: 'Solar', color: css('--s4'), values: pts.map((p) => p.pv ?? null) },\n    { name: 'Grid', color: css('--s3'), values: pts.map((p) => p.grid ?? null) },\n    { name: 'Loads', color: css('--s5'), values: pts.map((p) => p.load ?? null) }] });\n  lineChart(charts, { title: 'Battery voltage (V)', unit: 'V', digits: 2, times, series: one('v'), gapMs });\n  lineChart(charts, { title: 'Lowest cell temperature (°C)', unit: '°C', digits: 1, times, series: one('tmin'), gapMs });\n  // energy per day: finished days + today\n  const e = (lastNow && lastNow.energy) || null;\n  const days = e ? (e.days || []).map((d) => ({ ...d, label: dayLabel(Date.parse(d.day + 'T12:00:00')) })).concat([{ ...(e.today || {}), today: true }]).slice(-8) : [];\n  energyChart(charts, days);\n  // cell trends\n  const heat = $('heat'); heat.replaceChildren();\n  let pauses = 0, lostMs = 0;\n  for (let i = 1; i < pts.length; i++) { const g = pts[i].t - pts[i - 1].t; if (g > gapMs) { pauses += 1; lostMs += g - stepMs; } }\n  const lost = lostMs >= 2 * 3600e3 ? (lostMs / 3600e3).toFixed(1) + ' h' : Math.round(lostMs / 60e3) + ' min';\n  $('trendsNote').textContent = (week ? '7 days, 10-minute averages' : '24 hours, one column a minute')\n    + (pauses ? ` · blank where no reading came: ${pauses} ${pauses > 1 ? 'pauses' : 'pause'}, ${lost} in all` : '');\n  cellRange = [];\n  for (let k = 0; k < nPacks; k++) cellRange[k] = heatmap(heat, k + 1, pts, css(PACK[k % PACK.length]), gapMs, stepMs);\n  if (!nPacks) heat.innerHTML = '<p class=\"muted\">Collecting…</p>';\n  // table\n  const rows = pts.slice(-15).reverse();\n  $('table').innerHTML = rows.length ? `<table><tr><th>Time</th><th>V</th><th>A</th><th>W</th><th>SoC %</th>${Array.from({ length: nPacks }, (_, k) => `<th>P${k + 1} SoC</th><th>P${k + 1} gap</th>`).join('')}<th>Low °C</th><th>Solar</th><th>Grid</th><th>Loads</th></tr>${\n    rows.map((q) => `<tr><td>${week ? dayLabel(q.t) + ' ' : ''}${hhmm(q.t)}</td><td>${fmt(q.v, 2)}</td><td>${fmt(q.i)}</td><td>${fmt(q.p, 0)}</td><td>${fmt(q.soc)}</td>${\n      Array.from({ length: nPacks }, (_, k) => `<td>${fmt((q.ps || [])[k])}</td><td>${fmt((q.pd || [])[k], 0)}</td>`).join('')}<td>${fmt(q.tmin)}</td><td>${fmt(q.pv, 0)}</td><td>${fmt(q.grid, 0)}</td><td>${fmt(q.load, 0)}</td></tr>`).join('')}</table>` : '<p class=\"muted\">No readings yet.</p>';\n  if (lastNow) renderNow(lastNow); // the cell tables use the range just loaded\n  drawPending();\n  charts.querySelectorAll('details').forEach((d, i) => { if (chartsOpen[i]) d.open = true; });\n}\n\n// ---- loading ----\nconst base = location.pathname.replace(/\\/+$/, '');\nconst sample = window.__SEPLOS_SAMPLE;\nasync function getJson(path) { const r = await fetch(base + path, { cache: 'no-store' }); if (!r.ok) throw new Error(r.status + ' ' + r.statusText); return r.json(); }\nasync function loadNow() {\n  try { renderNow(sample ? sample.data : await getJson('/data')); } catch (e) { $('age').innerHTML = status('crit', '✕', 'Could not load the data: ' + e.message); }\n}\nasync function loadHistory() {\n  try { renderHistory(sample ? sample[range] : await getJson('/history?range=' + range + '&cells=1')); } catch (e) { $('charts').innerHTML = `<p class=\"muted\">Could not load the history: ${esc(e.message)}</p>`; }\n}\ndocument.querySelectorAll('.seg button').forEach((bt) => {\n  bt.setAttribute('aria-pressed', String(bt.dataset.r === range));\n  bt.addEventListener('click', () => {\n    range = bt.dataset.r; store.set('seplos-range', range);\n    document.querySelectorAll('.seg button').forEach((x) => x.setAttribute('aria-pressed', String(x === bt)));\n    loadHistory();\n  });\n});\nloadNow().then(loadHistory);\nif (!sample) { setInterval(loadNow, 15000); setInterval(loadHistory, 60000); }\nconst redraw = () => { if (lastNow) renderNow(lastNow); if (lastHist) renderHistory(lastHist); };\nmatchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw);\nlet rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(redraw, 200); });\n</script>\n</body>\n</html>\n",
+    "output": "str",
+    "x": 360,
+    "y": 780,
+    "wires": [
+      [
+        "f6a0b1e5c0de0062"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0062",
+    "type": "http response",
+    "name": "",
+    "statusCode": "",
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "x": 550,
+    "y": 780,
+    "wires": []
+  },
+  {
+    "id": "f6a0b1e5c0de0063",
+    "type": "http in",
+    "name": "GET /seplos/data",
+    "url": "/seplos/data",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 170,
+    "y": 830,
+    "wires": [
+      [
+        "f6a0b1e5c0de0064"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0064",
+    "type": "function",
+    "name": "page data",
+    "func": "const sys = global.get('seplos_sys');\nmsg.payload = {\n    now: global.get('seplos') || null,\n    error: global.get('seplos_error') || null,\n    settings: global.get('seplos_settings') || null,\n    settingsChanges: global.get('seplos_settings_changes') || [],\n    sys: sys && Date.now() - sys.t < 120000 ? sys : null,\n    energy: global.get('seplos_energy') || null,\n    timeTo: global.get('seplos_timeto') || null,\n    alerts: global.get('seplos_alerts') || { active: [], log: [] },\n    serverTime: Date.now()\n};\nmsg.headers = { 'Cache-Control': 'no-store' };\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 830,
+    "wires": [
+      [
+        "f6a0b1e5c0de0065"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0065",
+    "type": "http response",
+    "name": "",
+    "statusCode": "",
+    "headers": {},
+    "x": 550,
+    "y": 830,
+    "wires": []
+  },
+  {
+    "id": "f6a0b1e5c0de0066",
+    "type": "http in",
+    "name": "GET /seplos/history",
+    "url": "/seplos/history",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 180,
+    "y": 880,
+    "wires": [
+      [
+        "f6a0b1e5c0de0067"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0067",
+    "type": "function",
+    "name": "page history",
+    "func": "// GET /seplos/history?range=24h|7d&cells=1\nconst q = (msg.req && msg.req.query) || {};\nconst week = q.range === '7d';\nconst src = global.get(week ? 'seplos_h7' : 'seplos_h1') || [];\nconst withCells = q.cells === '1';\nmsg.payload = {\n    range: week ? '7d' : '24h',\n    points: src.map((p) => {\n        const o = Object.assign({}, p);\n        delete o._n;\n        if (!withCells) { delete o.cells; delete o.bal; }\n        return o;\n    }),\n    serverTime: Date.now()\n};\nmsg.headers = { 'Cache-Control': 'no-store' };\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 380,
+    "y": 880,
+    "wires": [
+      [
+        "f6a0b1e5c0de0068"
+      ]
+    ]
+  },
+  {
+    "id": "f6a0b1e5c0de0068",
+    "type": "http response",
+    "name": "",
+    "statusCode": "",
+    "headers": {},
+    "x": 550,
+    "y": 880,
+    "wires": []
+  },
+  {
+    "id": "f6a0b1e5c0de0090",
+    "type": "seplos-battery-device",
+    "name": "Seplos",
+    "address": "",
+    "deviceName": "",
+    "keepConnected": true
+  }
+]

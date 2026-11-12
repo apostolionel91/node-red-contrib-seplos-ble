@@ -1,0 +1,122 @@
+[
+  {
+    "id": "d4e0b1e5c0de0001",
+    "type": "comment",
+    "name": "Seplos V3 over Bluetooth (node-red-contrib-seplos-ble)",
+    "info": "Reads both packs every 60 s. Read-only. Errors go to the Catch node: the message names the step (find / connect / read) and what to check.",
+    "x": 250,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "d4e0b1e5c0de0002",
+    "type": "inject",
+    "name": "every 60 s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "60",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "10",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 150,
+    "y": 100,
+    "wires": [
+      [
+        "d4e0b1e5c0de0003"
+      ]
+    ]
+  },
+  {
+    "id": "d4e0b1e5c0de0003",
+    "type": "seplos-battery-get",
+    "name": "Seplos read",
+    "device": "d4e0b1e5c0de0009",
+    "x": 330,
+    "y": 100,
+    "wires": [
+      [
+        "d4e0b1e5c0de0004"
+      ]
+    ]
+  },
+  {
+    "id": "d4e0b1e5c0de0004",
+    "type": "function",
+    "name": "keep in global.seplos",
+    "func": "// A good read is kept in global \"seplos\"; a failed read sends nothing, so the last good one stays (check seplos.timestamp).\nglobal.set(\"seplos\", msg.payload);\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 540,
+    "y": 100,
+    "wires": [
+      [
+        "d4e0b1e5c0de0005"
+      ]
+    ]
+  },
+  {
+    "id": "d4e0b1e5c0de0005",
+    "type": "debug",
+    "name": "seplos",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 730,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "d4e0b1e5c0de0006",
+    "type": "catch",
+    "name": "read errors",
+    "scope": [
+      "d4e0b1e5c0de0003"
+    ],
+    "uncaught": false,
+    "x": 340,
+    "y": 160,
+    "wires": [
+      [
+        "d4e0b1e5c0de0007"
+      ]
+    ]
+  },
+  {
+    "id": "d4e0b1e5c0de0007",
+    "type": "debug",
+    "name": "Seplos error",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "error.message",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 540,
+    "y": 160,
+    "wires": []
+  },
+  {
+    "id": "d4e0b1e5c0de0009",
+    "type": "seplos-battery-device",
+    "name": "Seplos",
+    "address": "",
+    "deviceName": ""
+  }
+]
